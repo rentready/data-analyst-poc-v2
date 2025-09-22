@@ -5,16 +5,25 @@ from openai import OpenAI
 st.title("💬 Chatbot")
 st.write(
     "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
+    "The API key is configured via Streamlit secrets. "
     "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
 )
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
+# Get configuration from Streamlit secrets
+try:
+    openai_api_key = st.secrets["openai"]["api_key"]
+    model = st.secrets.get("app", {}).get("model", "gpt-3.5-turbo")
+    max_tokens = st.secrets.get("app", {}).get("max_tokens", 1000)
+    temperature = st.secrets.get("app", {}).get("temperature", 0.7)
+except KeyError:
+    st.error("❌ OpenAI API key not found in secrets. Please check your `.streamlit/secrets.toml` file.")
+    st.info("💡 Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and add your API key.")
+    st.stop()
+
+if not openai_api_key or openai_api_key == "your-openai-api-key-here":
+    st.error("❌ Please configure your OpenAI API key in `.streamlit/secrets.toml`")
+    st.info("💡 Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and add your actual API key.")
+    st.stop()
 else:
 
     # Create an OpenAI client.
@@ -41,11 +50,13 @@ else:
 
         # Generate a response using the OpenAI API.
         stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=model,
             messages=[
                 {"role": m["role"], "content": m["content"]}
                 for m in st.session_state.messages
             ],
+            max_tokens=max_tokens,
+            temperature=temperature,
             stream=True,
         )
 
