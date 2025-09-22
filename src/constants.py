@@ -33,3 +33,6 @@ RUN_STATUS_COMPLETED = "completed"
 RUN_STATUS_FAILED = "failed"
 RUN_STATUS_CANCELLED = "cancelled"
 RUN_STATUS_EXPIRED = "expired"
+
+# UI settings
+DEFAULT_TYPING_DELAY = 0.02  # Delay between characters in seconds

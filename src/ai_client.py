@@ -121,7 +121,8 @@ async def handle_chat(
     ai_project: AIProjectClient, 
     agent_id: str, 
     thread_id: str, 
-    user_message: str
+    user_message: str,
+    on_stream_chunk: callable = None
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Handle chat interaction.
     
@@ -130,6 +131,7 @@ async def handle_chat(
         agent_id: Agent ID
         thread_id: Thread ID
         user_message: User's message
+        on_stream_chunk: Optional callback function for streaming chunks
         
     Returns:
         Tuple of (response_content, annotations)
@@ -160,6 +162,9 @@ async def handle_chat(
                 if event_func_return_val:
                     logger.debug(f"Received event: {event_func_return_val}")
                     # Content is already accumulated in event_handler.response_content
+                    # Call streaming callback if provided
+                    if on_stream_chunk:
+                        on_stream_chunk(event_func_return_val)
                     
         # Get response content and annotations from event handler
         response_content = event_handler.response_content

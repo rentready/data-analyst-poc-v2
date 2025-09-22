@@ -10,8 +10,7 @@ from src.auth import initialize_msal_auth, get_credential, is_authenticated
 from src.ai_client import AzureAIClient, handle_chat, get_or_create_thread
 from src.ui import (
     render_header, render_messages, render_annotations, 
-    render_error_message,
-    render_spinner_with_message
+    render_error_message, render_spinner_with_message, StreamingDisplay
 )
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY, USER_ROLE, ASSISTANT_ROLE
 
@@ -39,7 +38,8 @@ def initialize_session_state(config: dict) -> None:
 async def process_chat_message(
     config: dict, 
     auth_data: dict, 
-    prompt: str
+    prompt: str,
+    on_stream_chunk: callable = None
 ) -> tuple[str, list]:
     """Process a chat message and return response.
     
@@ -47,6 +47,7 @@ async def process_chat_message(
         config: Configuration dictionary
         auth_data: Authentication data
         prompt: User's message
+        on_stream_chunk: Optional callback for streaming chunks
         
     Returns:
         Tuple of (response_content, annotations)
@@ -72,7 +73,7 @@ async def process_chat_message(
         
         # Handle chat
         response_content, annotations = await handle_chat(
-            ai_project, config[AGENT_ID_KEY], thread_id, prompt
+            ai_project, config[AGENT_ID_KEY], thread_id, prompt, on_stream_chunk
         )
         
         return response_content, annotations
@@ -114,37 +115,43 @@ def main() -> None:
 
         # Generate response
         with st.chat_message(ASSISTANT_ROLE):
-            with render_spinner_with_message("Thinking..."):
-                try:
-                    # Check if user is authenticated
-                    if not is_authenticated(auth_data):
-                        st.error("❌ Please sign in to use the chatbot.")
-                        return
-                    
-                    # Process chat message
-                    response_content, annotations = asyncio.run(
-                        process_chat_message(config, auth_data, prompt)
-                    )
-                    
-                    # Display response
-                    st.markdown(response_content)
-                    
-                    # Display annotations
-                    render_annotations(annotations)
-                    
-                    # Store response
-                    st.session_state.messages.append({
-                        "role": ASSISTANT_ROLE,
-                        "content": response_content,
-                        "annotations": annotations
-                    })
-                    
-                except Exception as e:
-                    render_error_message(str(e))
-                    st.session_state.messages.append({
-                        "role": ASSISTANT_ROLE,
-                        "content": "Sorry, I encountered an error. Please try again."
-                    })
+            try:
+                # Check if user is authenticated
+                if not is_authenticated(auth_data):
+                    st.error("❌ Please sign in to use the chatbot.")
+                    return
+                
+                # Create streaming display
+                streaming_display = StreamingDisplay()
+                
+                # Define streaming callback
+                def on_chunk(chunk: str):
+                    streaming_display.add_chunk(chunk)
+                
+                # Process chat message with streaming
+                response_content, annotations = asyncio.run(
+                    process_chat_message(config, auth_data, prompt, on_chunk)
+                )
+                
+                # Finalize the streaming display
+                streaming_display.finalize()
+                
+                # Display annotations
+                render_annotations(annotations)
+                
+                # Store response
+                st.session_state.messages.append({
+                    "role": ASSISTANT_ROLE,
+                    "content": response_content,
+                    "annotations": annotations
+                })
+                
+            except Exception as e:
+                render_error_message(str(e))
+                st.session_state.messages.append({
+                    "role": ASSISTANT_ROLE,
+                    "content": "Sorry, I encountered an error. Please try again."
+                })
 
 
 if __name__ == "__main__":

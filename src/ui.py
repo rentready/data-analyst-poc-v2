@@ -2,6 +2,7 @@
 
 import streamlit as st
 from typing import List, Dict, Any, Optional
+from .constants import DEFAULT_TYPING_DELAY
 
 
 def render_header() -> None:
@@ -79,3 +80,60 @@ def render_spinner_with_message(message: str = "Thinking..."):
         Streamlit spinner context manager
     """
     return st.spinner(message)
+
+
+def render_typing_effect(text: str, delay: float = 0.03) -> None:
+    """Render text with typing effect.
+    
+    Args:
+        text: Text to display with typing effect
+        delay: Delay between characters in seconds
+    """
+    import time
+    
+    placeholder = st.empty()
+    displayed_text = ""
+    
+    for char in text:
+        displayed_text += char
+        placeholder.markdown(displayed_text + "▌")  # Cursor effect
+        time.sleep(delay)
+    
+    # Remove cursor at the end
+    placeholder.markdown(displayed_text)
+
+
+class StreamingDisplay:
+    """Class to handle streaming text display with typing effect."""
+    
+    def __init__(self, placeholder=None, typing_delay: float = DEFAULT_TYPING_DELAY):
+        self.placeholder = placeholder or st.empty()
+        self.displayed_text = ""
+        self.cursor = "▌"
+        self.typing_delay = typing_delay
+    
+    def add_chunk(self, chunk: str) -> None:
+        """Add a chunk of text to the display with typing effect.
+        
+        Args:
+            chunk: Text chunk to add
+        """
+        import time
+        
+        # Add each character with a small delay for typing effect
+        for char in chunk:
+            self.displayed_text += char
+            self.placeholder.markdown(self.displayed_text + self.cursor)
+            time.sleep(self.typing_delay)
+    
+    def finalize(self) -> None:
+        """Finalize the display by removing the cursor."""
+        self.placeholder.markdown(self.displayed_text)
+    
+    def get_text(self) -> str:
+        """Get the current displayed text.
+        
+        Returns:
+            Current displayed text
+        """
+        return self.displayed_text
