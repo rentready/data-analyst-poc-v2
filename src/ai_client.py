@@ -29,11 +29,13 @@ class StreamlitEventHandler(AsyncAgentEventHandler[str]):
         super().__init__()
         self.response_content = ""
         self.annotations = []
+        self.has_streamed_content = False
         
     async def on_message_delta(self, delta: MessageDeltaChunk) -> Optional[str]:
         """Handle streaming message deltas."""
         if hasattr(delta, 'text') and delta.text:
             self.response_content += delta.text
+            self.has_streamed_content = True
             return delta.text
         return None
 
@@ -44,9 +46,7 @@ class StreamlitEventHandler(AsyncAgentEventHandler[str]):
                 return None
                 
             if message.text_messages:
-                content = message.text_messages[0].text.value
-                
-                # Handle annotations (same logic as main project)
+                # Only handle annotations, don't return content to avoid duplication
                 annotations = []
                 
                 # File citation annotations
@@ -68,7 +68,8 @@ class StreamlitEventHandler(AsyncAgentEventHandler[str]):
                     })
                 
                 self.annotations = annotations
-                return content
+                # Don't return content here to avoid duplication with streaming
+                return None
                 
         except Exception as e:
             logger.error(f"Error in event handler: {e}")
@@ -148,9 +149,6 @@ async def handle_chat(
         event_handler = StreamlitEventHandler()
         
         # Stream the response
-        response_content = ""
-        annotations = []
-        
         async with await agent_client.runs.stream(
             thread_id=thread_id,
             agent_id=agent_id,
@@ -161,13 +159,14 @@ async def handle_chat(
                 _, _, event_func_return_val = event
                 if event_func_return_val:
                     logger.debug(f"Received event: {event_func_return_val}")
-                    response_content += event_func_return_val
+                    # Content is already accumulated in event_handler.response_content
                     
-            # Get final annotations from event handler
-            annotations = event_handler.annotations
-            
+        # Get response content and annotations from event handler
+        response_content = event_handler.response_content
+        annotations = event_handler.annotations
+        
         # If no response content from streaming, poll for completion
-        if not response_content:
+        if not event_handler.has_streamed_content:
             logger.info("No streaming response, polling for completion...")
             response_content, annotations = await _poll_for_completion(
                 agent_client, agent_id, thread_id
