@@ -2,3 +2,4 @@ streamlit
 azure-ai-projects
 azure-identity
 streamlit_msal
+aiohttp==3.8.1
