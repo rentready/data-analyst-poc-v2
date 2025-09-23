@@ -100,24 +100,3 @@ def get_mcp_config() -> Optional[Dict[str, str]]:
         return None
 
 
-def get_mcp_run_config(access_token: str, server_label: str = "mcp_server") -> Dict[str, any]:
-    """Get MCP run configuration details.
-    
-    Args:
-        access_token: Access token for MCP authentication
-        server_label: MCP server label
-        
-    Returns:
-        Dict containing MCP run configuration
-    """
-    return {
-        "mcp": [
-            {
-                "server_label": server_label,
-                "headers": {
-                    "authorization": f"bearer {access_token}"
-                },
-                "require_approval": "never"
-            }
-        ]
-    }

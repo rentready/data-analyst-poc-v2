@@ -137,27 +137,7 @@ def display_mcp_status(config: Optional[Dict[str, str]], token: Optional[str]) -
         return
     
     if token:
-        st.success("✅ MCP token obtained and will be passed to run")
-        with st.expander("MCP Configuration"):
-            # Generate endpoint from tenant_id
-            tenant_id = config.get(AZURE_TENANT_ID_KEY, "unknown")
-            endpoint = f"{AUTHORITY_BASE_URL}/{tenant_id}/oauth2/token"
-            
-            # Get server label from config
-            server_label = config.get("mcp_server_label", "mcp_server")
-            
-            st.json({
-                "server_label": server_label,
-                "token_acquired": True,
-                "token_length": len(token),
-                "endpoint": endpoint,
-                "tenant_id": tenant_id,
-                "status": "Ready for run"
-            })
-        
-        # Display run configuration
-        from .ui import render_mcp_run_config
-        render_mcp_run_config(token)
+        st.success("✅ MCP tools ready for use")
     else:
         st.error("❌ Failed to obtain MCP token")
         st.info("💡 Check MCP settings in secrets.toml")
