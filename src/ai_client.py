@@ -108,8 +108,7 @@ class AzureAIClient:
     async def __aenter__(self):
         self.client = AIProjectClient(
             self.endpoint,
-            self.credential,
-            connection_verify=False  # Disable SSL verification for development
+            self.credential
         )
         return self.client
     
