@@ -137,3 +137,36 @@ class StreamingDisplay:
             Current displayed text
         """
         return self.displayed_text
+
+
+def render_mcp_run_config(access_token: str) -> None:
+    """Render MCP run configuration details.
+    
+    Args:
+        access_token: MCP access token
+    """
+    if not access_token:
+        return
+    
+    with st.expander("🔧 MCP Configuration Details"):
+        st.write("MCP configuration for use with Azure AI Foundry Agent:")
+        
+        from .config import get_mcp_run_config
+        run_config = get_mcp_run_config(access_token)
+        
+        st.code(str(run_config), language="json")
+        
+        # Copy button
+        if st.button("📋 Copy Configuration"):
+            import pyperclip
+            try:
+                import json
+                json_config = json.dumps(run_config, indent=2)
+                pyperclip.copy(json_config)
+                st.success("✅ Configuration copied to clipboard!")
+            except ImportError:
+                st.warning("⚠️ To copy, install pyperclip: pip install pyperclip")
+            except Exception as e:
+                st.error(f"❌ Copy error: {e}")
+        
+        st.info("💡 Token is automatically passed to each agent run")

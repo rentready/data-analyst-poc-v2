@@ -7,7 +7,9 @@ A Streamlit app that demonstrates how to build a chatbot using Azure AI Foundry 
 - Powered by Azure AI Foundry Agent
 - Support for both API key and Azure AD authentication
 - Configurable via Streamlit secrets
-- Ready for MCP integration
+- MCP token management and integration
+- Real-time streaming responses
+- Source annotations and citations
 
 ## Prerequisites
 
@@ -29,12 +31,23 @@ A Streamlit app that demonstrates how to build a chatbot using Azure AI Foundry 
    $ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
    ```
 
-   Edit `.streamlit/secrets.toml` and add your Azure AI Foundry configuration:
+   Edit `.streamlit/secrets.toml` and add your configuration:
    ```toml
+   # Azure AI Foundry Configuration
    [azure_ai_foundry]
-   proj_endpoint = "your-azure-ai-foundry-endpoint"
-   api_key = "your-azure-ai-foundry-api-key"
+   proj_endpoint = "https://your-ai-foundry-endpoint.cognitiveservices.azure.com/"
    agent_id = "your-agent-id"
+
+   # Environment Variables (for authentication)
+   [env]
+   AZURE_CLIENT_ID = "your-client-id"
+   AZURE_CLIENT_SECRET = "your-client-secret"
+   AZURE_TENANT_ID = "your-tenant-id"
+
+   # MCP Configuration (optional)
+   [mcp]
+   mcp_client_id = "your-mcp-client-id"
+   mcp_client_secret = "your-mcp-client-secret"
    ```
 
 3. Run the app
@@ -45,18 +58,55 @@ A Streamlit app that demonstrates how to build a chatbot using Azure AI Foundry 
 
 ## Authentication
 
-The app uses API key authentication via `AzureKeyCredential`. You need to provide your Azure AI Foundry API key in the secrets configuration.
+The app supports Azure AD authentication via MSAL. You need to provide your Azure credentials in the secrets configuration.
+
+## MCP Integration
+
+The app includes support for Model Context Protocol (MCP) integration:
+
+### Features
+- Automatic MCP token acquisition using client credentials flow
+- Integration with Azure AI Foundry Agent using McpTool class
+- Real-time token status display
+- Automatic token injection into agent runs
+
+### Setup
+1. Configure MCP settings in your `secrets.toml` file (see configuration section above)
+2. The app will automatically attempt to obtain an MCP access token on startup
+3. If successful, the token will be automatically used in all agent runs
+
+### How it works
+When you have a valid MCP token, the app will:
+1. Automatically inject the token into every agent run using the `McpTool` class
+2. Display the token status and configuration in the UI
+3. Enable the agent to use MCP tools with proper authentication
 
 ## Configuration
 
 The app requires the following configuration in `.streamlit/secrets.toml`:
 
+### Required Configuration
 ```toml
 [azure_ai_foundry]
-proj_endpoint = "https://your-project.services.ai.azure.com/api/projects/your-project"
-api_key = "your-api-key-here"
-agent_id = "asst_your_agent_id"
+proj_endpoint = "https://your-ai-foundry-endpoint.cognitiveservices.azure.com/"
+agent_id = "your-agent-id"
+
+[env]
+AZURE_CLIENT_ID = "your-client-id"
+AZURE_CLIENT_SECRET = "your-client-secret"
+AZURE_TENANT_ID = "your-tenant-id"
 ```
+
+### Optional MCP Configuration
+```toml
+[mcp]
+mcp_client_id = "your-mcp-client-id"
+mcp_client_secret = "your-mcp-client-secret"
+```
+
+**Note**: MCP uses the same `AZURE_TENANT_ID` from the `[env]` section. The token endpoint is automatically generated as `https://login.microsoftonline.com/{AZURE_TENANT_ID}/oauth2/token`.
+
+**Note**: If MCP configuration is not provided, the app will work normally but without MCP functionality.
 
 ## Learn More
 

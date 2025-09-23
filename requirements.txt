@@ -1,5 +1,6 @@
 streamlit
-azure-ai-projects
+azure-ai-projects>=1.1.0b4
 azure-identity
 streamlit_msal
 aiohttp
+pyperclip

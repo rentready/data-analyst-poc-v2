@@ -36,3 +36,9 @@ RUN_STATUS_EXPIRED = "expired"
 
 # UI settings
 DEFAULT_TYPING_DELAY = 0.02  # Delay between characters in seconds
+
+# MCP Configuration
+MCP_SERVER_LABEL_KEY = "mcp_server_label"
+MCP_CLIENT_ID_KEY = "mcp_client_id"
+MCP_CLIENT_SECRET_KEY = "mcp_client_secret"
+MCP_SECRETS_KEY = "mcp"

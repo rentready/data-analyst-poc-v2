@@ -5,7 +5,8 @@ from typing import Dict, Optional
 from .constants import (
     PROJ_ENDPOINT_KEY, AGENT_ID_KEY, AZURE_AI_FOUNDRY_SECRETS_KEY,
     ENV_SECRETS_KEY, AZURE_CLIENT_ID_KEY, AZURE_CLIENT_SECRET_KEY,
-    AZURE_TENANT_ID_KEY, AUTHORITY_BASE_URL
+    AZURE_TENANT_ID_KEY, AUTHORITY_BASE_URL, MCP_SECRETS_KEY,
+    MCP_CLIENT_ID_KEY, MCP_CLIENT_SECRET_KEY, MCP_SERVER_LABEL_KEY
 )
 
 
@@ -65,3 +66,58 @@ def get_auth_config() -> tuple[Optional[str], Optional[str], Optional[str]]:
     
     authority = f"{AUTHORITY_BASE_URL}/{tenant_id}"
     return client_id, tenant_id, authority
+
+
+def get_mcp_config() -> Optional[Dict[str, str]]:
+    """Get MCP configuration from Streamlit secrets.
+    
+    Returns:
+        Dict containing MCP configuration or None if configuration is invalid.
+    """
+    try:
+        mcp_config = st.secrets[MCP_SECRETS_KEY]
+        
+        # Get tenant_id from env section (shared with main auth)
+        import os
+        tenant_id = os.environ.get(AZURE_TENANT_ID_KEY)
+        
+        config = {
+            MCP_CLIENT_ID_KEY: mcp_config.get(MCP_CLIENT_ID_KEY),
+            MCP_CLIENT_SECRET_KEY: mcp_config.get(MCP_CLIENT_SECRET_KEY),
+            MCP_SERVER_LABEL_KEY: mcp_config.get(MCP_SERVER_LABEL_KEY, "mcp_server"),
+            AZURE_TENANT_ID_KEY: tenant_id
+        }
+        
+        missing = [k for k, v in config.items() if not v]
+        if missing:
+            st.warning(f"⚠️ Missing MCP configuration in secrets: {', '.join(missing)}")
+            st.info("💡 MCP functionality will be disabled. Add MCP configuration to enable it.")
+            return None
+        
+        return config
+    except KeyError:
+        st.warning("⚠️ MCP configuration not found in secrets. MCP functionality will be disabled.")
+        return None
+
+
+def get_mcp_run_config(access_token: str, server_label: str = "mcp_server") -> Dict[str, any]:
+    """Get MCP run configuration details.
+    
+    Args:
+        access_token: Access token for MCP authentication
+        server_label: MCP server label
+        
+    Returns:
+        Dict containing MCP run configuration
+    """
+    return {
+        "mcp": [
+            {
+                "server_label": server_label,
+                "headers": {
+                    "authorization": f"bearer {access_token}"
+                },
+                "require_approval": "never"
+            }
+        ]
+    }

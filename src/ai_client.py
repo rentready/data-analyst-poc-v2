@@ -1,4 +1,4 @@
-"""Azure AI Foundry client and event handling."""
+"""Azure AI Foundry client and event handling with MCP support."""
 
 import asyncio
 import logging
@@ -10,7 +10,8 @@ from azure.ai.agents.models import (
     MessageDeltaChunk,
     ThreadMessage,
     ThreadRun,
-    RunStep
+    RunStep,
+    McpTool
 )
 from azure.core.credentials import TokenCredential
 from .constants import (
@@ -121,6 +122,8 @@ async def handle_chat(
     agent_id: str, 
     thread_id: str, 
     user_message: str,
+    mcp_token: str = None,
+    mcp_config: dict = None,
     on_stream_chunk: callable = None
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Handle chat interaction.
@@ -130,6 +133,7 @@ async def handle_chat(
         agent_id: Agent ID
         thread_id: Thread ID
         user_message: User's message
+        mcp_token: Optional MCP access token for tool resources
         on_stream_chunk: Optional callback function for streaming chunks
         
     Returns:
@@ -149,11 +153,35 @@ async def handle_chat(
         # Create event handler
         event_handler = StreamlitEventHandler()
         
+        # Prepare MCP tool resources if token is available
+        tool_resources = None
+        if mcp_token:
+            # Get server label from config or use default
+            server_label = "mcp_server"
+            if mcp_config:
+                server_label = mcp_config.get("mcp_server_label", "mcp_server")
+            
+            # Create MCP tool with authorization header
+            mcp_tool = McpTool(
+                server_label=server_label,
+                server_url="",  # URL will be set by the agent configuration
+                allowed_tools=[]  # Allow all tools
+            )
+            
+            # Update headers with authorization token
+            mcp_tool.update_headers("authorization", f"bearer {mcp_token}")
+            mcp_tool.set_approval_mode("never")
+            
+            # Get tool resources
+            tool_resources = mcp_tool.resources
+            logger.info(f"MCP token added to run parameters (token length: {len(mcp_token)})")
+        
         # Stream the response
         async with await agent_client.runs.stream(
             thread_id=thread_id,
             agent_id=agent_id,
             event_handler=event_handler,
+            tool_resources=tool_resources
         ) as stream:
             logger.info("Successfully created stream; starting to process events")
             async for event in stream:
@@ -173,7 +201,7 @@ async def handle_chat(
         if not event_handler.has_streamed_content:
             logger.info("No streaming response, polling for completion...")
             response_content, annotations = await _poll_for_completion(
-                agent_client, agent_id, thread_id
+                agent_client, agent_id, thread_id, mcp_token
             )
         
         return response_content, annotations
@@ -186,7 +214,8 @@ async def handle_chat(
 async def _poll_for_completion(
     agent_client, 
     agent_id: str, 
-    thread_id: str
+    thread_id: str,
+    mcp_token: str = None
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Poll for run completion when streaming doesn't work.
     
@@ -194,6 +223,7 @@ async def _poll_for_completion(
         agent_client: Agent client
         agent_id: Agent ID
         thread_id: Thread ID
+        mcp_token: Optional MCP access token
         
     Returns:
         Tuple of (response_content, annotations)

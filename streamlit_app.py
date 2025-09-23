@@ -5,9 +5,10 @@ import logging
 import streamlit as st
 
 # Import our custom modules
-from src.config import get_config, setup_environment_variables, get_auth_config
+from src.config import get_config, setup_environment_variables, get_auth_config, get_mcp_config
 from src.auth import initialize_msal_auth, get_credential, is_authenticated
 from src.ai_client import AzureAIClient, handle_chat, get_or_create_thread
+from src.mcp_client import get_mcp_token_sync, display_mcp_status
 from src.ui import (
     render_header, render_messages, render_annotations, 
     render_error_message, render_spinner_with_message, StreamingDisplay
@@ -19,11 +20,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def initialize_session_state(config: dict) -> None:
+def initialize_session_state(config: dict, mcp_config: dict = None) -> None:
     """Initialize Streamlit session state.
     
     Args:
         config: Configuration dictionary
+        mcp_config: MCP configuration dictionary (optional)
     """
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -33,12 +35,22 @@ def initialize_session_state(config: dict) -> None:
         
     if "agent_id" not in st.session_state:
         st.session_state.agent_id = config[AGENT_ID_KEY]
+    
+    # Initialize MCP token if configuration is available
+    if mcp_config and "mcp_token" not in st.session_state:
+        logger.info("Getting MCP token...")
+        st.session_state.mcp_token = get_mcp_token_sync(mcp_config)
+        if st.session_state.mcp_token:
+            logger.info("MCP token obtained successfully")
+        else:
+            logger.warning("Failed to obtain MCP token")
 
 
 async def process_chat_message(
     config: dict, 
     auth_data: dict, 
     prompt: str,
+    mcp_config: dict = None,
     on_stream_chunk: callable = None
 ) -> tuple[str, list]:
     """Process a chat message and return response.
@@ -47,6 +59,7 @@ async def process_chat_message(
         config: Configuration dictionary
         auth_data: Authentication data
         prompt: User's message
+        mcp_config: MCP configuration dictionary (optional)
         on_stream_chunk: Optional callback for streaming chunks
         
     Returns:
@@ -71,9 +84,10 @@ async def process_chat_message(
             st.session_state.thread_id = thread_id
             st.session_state.agent_id = config[AGENT_ID_KEY]
         
-        # Handle chat
+        # Handle chat with MCP token if available
+        mcp_token = getattr(st.session_state, 'mcp_token', None)
         response_content, annotations = await handle_chat(
-            ai_project, config[AGENT_ID_KEY], thread_id, prompt, on_stream_chunk
+            ai_project, config[AGENT_ID_KEY], thread_id, prompt, mcp_token, mcp_config, on_stream_chunk
         )
         
         return response_content, annotations
@@ -89,6 +103,9 @@ def main() -> None:
     if not config:
         st.stop()
     
+    # Get MCP configuration
+    mcp_config = get_mcp_config()
+    
     # Setup environment variables
     setup_environment_variables()
     
@@ -101,7 +118,12 @@ def main() -> None:
     auth_data = initialize_msal_auth(client_id, authority)
     
     # Initialize session state
-    initialize_session_state(config)
+    initialize_session_state(config, mcp_config)
+    
+    # Display MCP status if configured
+    if mcp_config:
+        mcp_token = getattr(st.session_state, 'mcp_token', None)
+        display_mcp_status(mcp_config, mcp_token)
     
     # Display existing messages
     render_messages(st.session_state.messages)
@@ -130,7 +152,7 @@ def main() -> None:
                 
                 # Process chat message with streaming
                 response_content, annotations = asyncio.run(
-                    process_chat_message(config, auth_data, prompt, on_chunk)
+                    process_chat_message(config, auth_data, prompt, mcp_config, on_chunk)
                 )
                 
                 # Finalize the streaming display
