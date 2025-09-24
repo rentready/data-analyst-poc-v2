@@ -1,8 +1,10 @@
 """Azure AI Foundry client and event handling with MCP support."""
 
 import asyncio
+import json
 import logging
 from typing import Optional, Tuple, List, Dict, Any
+import streamlit as st
 
 from azure.ai.projects.aio import AIProjectClient
 from azure.ai.agents.models import (
@@ -26,11 +28,13 @@ logger = logging.getLogger(__name__)
 class StreamlitEventHandler(AsyncAgentEventHandler[str]):
     """Custom Event Handler for Streamlit chatbot."""
     
-    def __init__(self):
+    def __init__(self, on_tool_status=None):
         super().__init__()
         self.response_content = ""
         self.annotations = []
         self.has_streamed_content = False
+        self.on_tool_status = on_tool_status
+        self.tool_status_container = None
         
     async def on_message_delta(self, delta: MessageDeltaChunk) -> Optional[str]:
         """Handle streaming message deltas."""
@@ -95,8 +99,100 @@ class StreamlitEventHandler(AsyncAgentEventHandler[str]):
 
     async def on_run_step(self, step: RunStep) -> Optional[str]:
         """Handle run steps."""
-        logger.info(f"Step {step.get('id', 'unknown')} status: {step.get('status', 'unknown')}")
+        step_id = step.get('id', 'unknown')
+        step_status = step.get('status', 'unknown')
+        step_type = step.get('type', 'unknown')
+        
+        logger.info(f"Step {step_id} ({step_type}) status: {step_status}")
+        
+        # Handle tool execution
+        if step_type == "tool_calls":
+            if step_status == "in_progress":
+                self._show_tool_start()
+            elif step_status == "completed":
+                self._show_tool_completion(step)
+            elif step_status == "failed":
+                self._show_tool_failure()
+        
         return None
+    
+    def _show_tool_start(self):
+        """Show tool execution start."""
+        logger.info("🔧 TOOL EXECUTION STARTED")
+        if not hasattr(self, 'status_container'):
+            self.status_container = st.status("🔧 Executing tool...", expanded=False)
+        else:
+            self.status_container.update(label="🔧 Executing tool...", state="running")
+    
+    def _show_tool_completion(self, step):
+        """Show tool completion with name and result."""
+        logger.info("🔧 TOOL EXECUTION COMPLETED")
+        
+        try:
+            # Extract tool name and result
+            step_details = step.step_details
+            tool_call = step_details['tool_calls'][0]
+            tool_name = tool_call['name']
+            output = tool_call.get('output', '')
+            
+            # Parse result if available
+            result = self._parse_tool_result(output)
+            count = result.get('count', 0) if result else 0
+            
+            # Update status
+            if hasattr(self, 'status_container'):
+                self.status_container.update(
+                    label=f"✅ Tool {tool_name} completed: {count} results",
+                    state="complete"
+                )
+                # Show result
+                if result:
+                    self.status_container.write(result)
+                elif output:
+                    self.status_container.write(output)
+                else:
+                    self.status_container.write("Tool completed")
+                    
+        except Exception as e:
+            logger.info(f"🔧 TOOL COMPLETION ERROR: {e}")
+            if hasattr(self, 'status_container'):
+                self.status_container.update(
+                    label="✅ Tool completed",
+                    state="complete"
+                )
+                self.status_container.write("Tool completed")
+    
+    def _show_tool_failure(self):
+        """Show tool execution failure."""
+        logger.info("🔧 TOOL EXECUTION FAILED")
+        if hasattr(self, 'status_container'):
+            self.status_container.update(
+                label="❌ Tool execution failed",
+                state="error"
+            )
+            self.status_container.write("Tool execution failed")
+    
+    def _parse_tool_result(self, output):
+        """Parse tool result from output."""
+        if not output:
+            return None
+            
+        try:
+            if 'TOOL RESULT:' in output:
+                # Extract JSON part after TOOL RESULT:
+                json_part = output.split('TOOL RESULT:')[1].strip()
+                result = json.loads(json_part)
+                logger.info(f"🔧 PARSED JSON RESULT: {result}")
+                return result
+            else:
+                # Try to parse as JSON directly
+                result = json.loads(output)
+                logger.info(f"🔧 PARSED DIRECT JSON: {result}")
+                return result
+        except Exception as e:
+            logger.info(f"🔧 JSON PARSE FAILED, RETURNING AS TEXT: {e}")
+            # Return full output if JSON parsing fails
+            return output
 
 
 class AzureAIClient:
@@ -124,7 +220,8 @@ async def handle_chat(
     user_message: str,
     mcp_token: str = None,
     mcp_config: dict = None,
-    on_stream_chunk: callable = None
+    on_stream_chunk: callable = None,
+    on_tool_status: callable = None
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Handle chat interaction.
     
@@ -151,7 +248,7 @@ async def handle_chat(
         logger.info(f"Created message, message ID: {message.id}")
         
         # Create event handler
-        event_handler = StreamlitEventHandler()
+        event_handler = StreamlitEventHandler(on_tool_status=on_tool_status)
         
         # Prepare MCP tool resources if token is available
         tool_resources = None
@@ -233,9 +330,9 @@ async def _poll_for_completion(
     
     while attempt < max_attempts:
         # Get the latest run status
-        runs = await agent_client.runs.list(thread_id=thread_id)
+        runs = agent_client.runs.list(thread_id=thread_id)
         latest_run = None
-        for run in runs:
+        async for run in runs:
             if run.agent_id == agent_id:
                 latest_run = run
                 break
@@ -245,10 +342,14 @@ async def _poll_for_completion(
             
             if latest_run.status == RUN_STATUS_COMPLETED:
                 # Get the latest messages to find the assistant's response
-                messages = await agent_client.messages.list(thread_id=thread_id)
+                messages = agent_client.messages.list(thread_id=thread_id)
                 
                 # Find the assistant's message (should be the latest one with role "assistant")
-                for message in reversed(messages):
+                messages_list = []
+                async for message in messages:
+                    messages_list.append(message)
+                
+                for message in reversed(messages_list):
                     if message.role == ASSISTANT_ROLE and message.text_messages:
                         response_content = message.text_messages[0].text.value
                         

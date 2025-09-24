@@ -51,7 +51,8 @@ async def process_chat_message(
     auth_data: dict, 
     prompt: str,
     mcp_config: dict = None,
-    on_stream_chunk: callable = None
+    on_stream_chunk: callable = None,
+    on_tool_status: callable = None
 ) -> tuple[str, list]:
     """Process a chat message and return response.
     
@@ -87,7 +88,7 @@ async def process_chat_message(
         # Handle chat with MCP token if available
         mcp_token = getattr(st.session_state, 'mcp_token', None)
         response_content, annotations = await handle_chat(
-            ai_project, config[AGENT_ID_KEY], thread_id, prompt, mcp_token, mcp_config, on_stream_chunk
+            ai_project, config[AGENT_ID_KEY], thread_id, prompt, mcp_token, mcp_config, on_stream_chunk, on_tool_status
         )
         
         return response_content, annotations
@@ -150,9 +151,13 @@ def main() -> None:
                 def on_chunk(chunk: str):
                     streaming_display.add_chunk(chunk)
                 
+                # Define tool status callback
+                def on_tool_status(status: str):
+                    st.info(status)
+                
                 # Process chat message with streaming
                 response_content, annotations = asyncio.run(
-                    process_chat_message(config, auth_data, prompt, mcp_config, on_chunk)
+                    process_chat_message(config, auth_data, prompt, mcp_config, on_chunk, on_tool_status)
                 )
                 
                 # Finalize the streaming display
