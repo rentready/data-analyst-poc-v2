@@ -1,6 +1,7 @@
 """Azure AI Foundry Chatbot - Main Streamlit Application."""
 
 import asyncio
+import time
 import logging
 import streamlit as st
 
@@ -11,7 +12,7 @@ from src.ai_client import AzureAIClient, handle_chat, get_or_create_thread
 from src.mcp_client import get_mcp_token_sync, display_mcp_status
 from src.ui import (
     render_header, render_messages, render_annotations, 
-    render_error_message, StreamingDisplay
+    render_error_message
 )
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY, USER_ROLE, ASSISTANT_ROLE
 from azure.identity import DefaultAzureCredential
@@ -116,7 +117,7 @@ def main() -> None:
     # Initialize MSAL authentication
     with st.sidebar:
         token_credential = initialize_msal_auth(client_id, tenant_id)
-    
+
     # Check if user is authenticated
     if not token_credential:
         st.error("❌ Please sign in to use the chatbot.")
@@ -144,12 +145,12 @@ def main() -> None:
         with st.chat_message(ASSISTANT_ROLE):
             try:
                 
-                # Create streaming display
-                streaming_display = StreamingDisplay()
+                # Accumulate chunks
+                chunks = []
                 
                 # Define streaming callback
                 def on_chunk(chunk: str):
-                    streaming_display.add_chunk(chunk)
+                    chunks.append(chunk)
                 
                 # Define tool status callback
                 def on_tool_status(status: str):
@@ -160,8 +161,13 @@ def main() -> None:
                     process_chat_message(config, DefaultAzureCredential(), prompt, mcp_config, on_chunk, on_tool_status)
                 )
                 
-                # Finalize the streaming display
-                streaming_display.finalize()
+                # Stream all chunks with typewriter effect
+                def stream_generator():
+                    for word in response_content.split(" "):
+                        yield word + " "
+                        time.sleep(0.02)
+                
+                st.write_stream(stream_generator)
                 
                 # Display annotations
                 render_annotations(annotations)
@@ -172,6 +178,8 @@ def main() -> None:
                     "content": response_content,
                     "annotations": annotations
                 })
+                
+
                 
             except Exception as e:
                 render_error_message(str(e))

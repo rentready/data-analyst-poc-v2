@@ -281,6 +281,7 @@ async def handle_chat(
             tool_resources=tool_resources
         ) as stream:
             logger.info("Successfully created stream; starting to process events")
+
             async for event in stream:
                 _, _, event_func_return_val = event
                 if event_func_return_val:
