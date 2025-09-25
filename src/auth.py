@@ -47,30 +47,7 @@ def initialize_msal_auth(client_id: str, tenant_id: str) -> TokenCredential:
     if not _is_authenticated(auth_data):
         return None
         
-    return _get_credential(auth_data)
-
-
-def _get_credential(auth_data: dict) -> TokenCredential:
-    """Get appropriate credential for Azure AI client.
-    
-    Args:
-        auth_data: Authentication data from MSAL
-        
-    Returns:
-        TokenCredential instance
-    """
-    # Get expiration time from token claims
-    account = auth_data.get('account', {})
-    id_token_claims = account.get('idTokenClaims', {})
-    expires_at = id_token_claims.get('exp', 0)
-    
-    # Try DefaultAzureCredential first (uses environment variables)
-    try:
-        return DefaultAzureCredential()
-    except Exception:
-        # Fallback to MSAL token
-        return MSALTokenCredential(auth_data["accessToken"], expires_at)
-
+    return DefaultAzureCredential()
 
 def _is_authenticated(auth_data: dict) -> bool:
     """Check if user is authenticated.
