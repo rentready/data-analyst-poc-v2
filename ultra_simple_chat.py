@@ -3,10 +3,17 @@
 import streamlit as st
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
+import logging
 import time
-from src.config import get_config
+from src.config import get_config, get_mcp_config, setup_environment_variables
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY
 from src.event_parser import EventParser, MessageDeltaEvent
+from src.mcp_client import get_mcp_token_sync
+from azure.ai.agents.models import McpTool
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def get_response(thread_id: str, message: str, project_endpoint: str, agent_id: str):
     """Get AI response using sync client."""
@@ -16,11 +23,49 @@ def get_response(thread_id: str, message: str, project_endpoint: str, agent_id: 
     # Create user message
     agents_client.messages.create(thread_id=thread_id, role="user", content=message)
 
-    # Stream the response
+    # Get MCP configuration
+    setup_environment_variables()
+    mcp_config = get_mcp_config()
+
+    mcp_token = get_mcp_token_sync(mcp_config)
+
+
+    # Initialize MCP tool if config and token available
+    tool_resources = []
+    if mcp_config and mcp_token:
+        try:
+            # Get server label from config
+            server_label = mcp_config.get("mcp_server_label", "mcp_server")
+            
+            # Create MCP tool with authorization header
+            mcp_tool = McpTool(
+                server_label=server_label,
+                server_url="",  # URL will be set by the agent configuration
+                allowed_tools=[]  # Allow all tools
+            )
+            
+            # Update headers with authorization token
+            mcp_tool.update_headers("authorization", f"bearer {mcp_token}")
+            mcp_tool.set_approval_mode("never")
+            
+            # Get tool resources
+            tool_resources = mcp_tool.resources
+            logger.info(f"MCP tool initialized with {len(tool_resources)} resources")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize MCP tool: {e}")
+
+    # Stream the response with MCP token in headers if available
+    headers = {}
+    if mcp_token:
+        headers["Authorization"] = f"Bearer {mcp_token}"
+    
     stream = agents_client.runs.stream(
         thread_id=thread_id,
         agent_id=agent_id,
-        response_format="auto"
+        response_format="auto",
+        headers=headers,
+        tool_resources=tool_resources
     )
 
     return stream
@@ -76,7 +121,10 @@ def main():
                         time.sleep(0.02)
                         yield parsed_event.text_value
                     elif hasattr(parsed_event, 'status') and parsed_event.status != 'completed':
+                        logger.info(f"Processing: {parsed_event.status}")
                         status_container.status("Processing...")
+                    else:
+                        logger.info(f"Unkonwn: {parsed_event}")
             
             content_response = st.write_stream(stream_generator)
         st.session_state.messages.append({"role": "assistant", "content": content_response})
