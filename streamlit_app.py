@@ -14,6 +14,7 @@ from src.ui import (
     render_error_message, StreamingDisplay
 )
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY, USER_ROLE, ASSISTANT_ROLE
+from azure.identity import DefaultAzureCredential
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -156,7 +157,7 @@ def main() -> None:
                 
                 # Process chat message with streaming
                 response_content, annotations = asyncio.run(
-                    process_chat_message(config, token_credential, prompt, mcp_config, on_chunk, on_tool_status)
+                    process_chat_message(config, DefaultAzureCredential(), prompt, mcp_config, on_chunk, on_tool_status)
                 )
                 
                 # Finalize the streaming display
