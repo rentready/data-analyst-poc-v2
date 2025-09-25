@@ -123,8 +123,21 @@ def main():
                     elif hasattr(parsed_event, 'status') and parsed_event.status != 'completed':
                         logger.info(f"Processing: {parsed_event.status}")
                         status_container.status("Processing...")
+                    elif isinstance(parsed_event, dict):
+                        if parsed_event.get('type') == 'thread.run.step.completed':
+                            logger.info(f"Step completed: {parsed_event.get('step_type', 'unknown')}")
+                        elif parsed_event.get('type') == 'thread.run.step.delta':
+                            tool_name = parsed_event.get('tool_name', 'unknown')
+                            server_label = parsed_event.get('server_label', 'unknown')
+                            logger.info(f"🔧 MCP Tool: {tool_name} ({server_label})")
+                            if parsed_event.get('output_preview'):
+                                logger.info(f"📊 Tool output: {parsed_event.get('output_preview')}")
+                        elif parsed_event.get('type') == 'done':
+                            logger.info("Response completed")
+                        else:
+                            logger.info(f"Event: {parsed_event.get('type', 'unknown')}")
                     else:
-                        logger.info(f"Unkonwn: {parsed_event}")
+                        logger.info(f"Unknown event: {event_bytes}")
             
             content_response = st.write_stream(stream_generator)
         st.session_state.messages.append({"role": "assistant", "content": content_response})

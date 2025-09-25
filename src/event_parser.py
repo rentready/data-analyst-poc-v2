@@ -63,11 +63,15 @@ class EventParser:
                             continue
                 
                 if event_type and data:
+                    # Debug for step.delta events
+                    if event_type == 'thread.run.step.delta':
+                        print(f"DEBUG step.delta: data={data}")
+                        print(f"DEBUG step.delta: delta={data.get('delta')}")
                     # Return the first valid event
                     return EventParser._parse_by_type(event_type, data)
             
             return None
-            
+                
         except Exception as e:
             print(f"Error parsing event: {e}")
             return None
@@ -81,10 +85,17 @@ class EventParser:
             return EventParser._parse_thread_run(data)
         elif event_type in ['thread.message.created', 'thread.message.in_progress', 'thread.message.completed']:
             return EventParser._parse_thread_message(data)
+        elif event_type == 'thread.run.step.completed':
+            return EventParser._parse_thread_run_step(data)
+        elif event_type == 'thread.run.step.delta':
+            return EventParser._parse_thread_run_step_delta(data)
+        elif event_type == 'thread.message.delta':
+            return EventParser._parse_message_delta(data)
         elif event_type == 'done':
             return {'type': 'done', 'data': data}
         
-        return None
+        # Return generic event for unknown types
+        return {'type': event_type, 'data': data}
     
     @staticmethod
     def _parse_message_delta(data: dict) -> Optional[MessageDeltaEvent]:
@@ -130,6 +141,60 @@ class EventParser:
         except Exception as e:
             print(f"Error parsing thread message: {e}")
         return None
+
+    @staticmethod
+    def _parse_thread_run_step(data: dict) -> Optional[dict]:
+        """Parse thread run step event."""
+        try:
+            return {
+                'type': 'thread.run.step.completed',
+                'id': data.get('id'),
+                'status': data.get('status'),
+                'step_type': data.get('type'),
+                'run_id': data.get('run_id'),
+                'assistant_id': data.get('assistant_id'),
+                'thread_id': data.get('thread_id')
+            }
+        except Exception as e:
+            print(f"Error parsing thread run step event: {e}")
+            return None
+
+    @staticmethod
+    def _parse_thread_run_step_delta(data: dict) -> Optional[dict]:
+        """Parse thread run step delta event (MCP tool execution)."""
+        try:
+            delta = data.get('delta', {})
+            step_details = delta.get('step_details', {})
+            tool_calls = step_details.get('tool_calls', []) if step_details else []
+            
+            result = {
+                'type': 'thread.run.step.delta',
+                'id': data.get('id'),
+                'step_details_type': step_details.get('type') if step_details else None,
+                'tool_calls_count': len(tool_calls) if tool_calls else 0
+            }
+            
+            # Extract tool call information
+            if tool_calls and len(tool_calls) > 0:
+                tool_call = tool_calls[0]  # Usually one tool call
+                result.update({
+                    'tool_name': tool_call.get('name'),
+                    'tool_type': tool_call.get('type'),
+                    'server_label': tool_call.get('server_label'),
+                    'has_output': bool(tool_call.get('output'))
+                })
+                
+                # Truncate output for logging if too long
+                output = tool_call.get('output', '')
+                if output and len(output) > 200:
+                    result['output_preview'] = output[:200] + '...'
+                else:
+                    result['output_preview'] = output
+            
+            return result
+        except Exception as e:
+            print(f"Error parsing thread run step delta event: {e}")
+            return None
     
     @staticmethod
     def extract_text_from_events(events: Generator[bytes, None, None]) -> Generator[str, None, None]:
