@@ -40,45 +40,51 @@ class EventParser:
         """Parse a single event from bytes."""
         try:
             event_str = event_bytes.decode('utf-8')
-            lines = event_str.split('\n')
             
-            event_type = None
-            data = None
+            # Split by double newlines to handle multiple events in one chunk
+            events = event_str.split('\n\n')
             
-            for line in lines:
-                if line.startswith('event: '):
-                    event_type = line[7:]  # Remove 'event: ' prefix
-                elif line.startswith('data: '):
-                    data = json.loads(line[6:])  # Remove 'data: ' prefix
-            
-            if not event_type or not data:
-                return None
+            for event in events:
+                if not event.strip():
+                    continue
+                    
+                lines = event.strip().split('\n')
+                event_type = None
+                data = None
                 
-            # Parse specific event types
-            if event_type == 'thread.message.delta':
-                return EventParser._parse_message_delta(data)
-            elif event_type == 'thread.run.created':
-                return EventParser._parse_thread_run(data)
-            elif event_type == 'thread.run.queued':
-                return EventParser._parse_thread_run(data)
-            elif event_type == 'thread.run.in_progress':
-                return EventParser._parse_thread_run(data)
-            elif event_type == 'thread.run.completed':
-                return EventParser._parse_thread_run(data)
-            elif event_type == 'thread.message.created':
-                return EventParser._parse_thread_message(data)
-            elif event_type == 'thread.message.in_progress':
-                return EventParser._parse_thread_message(data)
-            elif event_type == 'thread.message.completed':
-                return EventParser._parse_thread_message(data)
-            elif event_type == 'done':
-                return {'type': 'done', 'data': data}
+                for line in lines:
+                    if line.startswith('event: '):
+                        event_type = line[7:]  # Remove 'event: ' prefix
+                    elif line.startswith('data: '):
+                        data_str = line[6:]  # Remove 'data: ' prefix
+                        try:
+                            data = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
                 
+                if event_type and data:
+                    # Return the first valid event
+                    return EventParser._parse_by_type(event_type, data)
+            
             return None
             
         except Exception as e:
             print(f"Error parsing event: {e}")
             return None
+    
+    @staticmethod
+    def _parse_by_type(event_type: str, data: dict) -> Optional[Any]:
+        """Parse event by type."""
+        if event_type == 'thread.message.delta':
+            return EventParser._parse_message_delta(data)
+        elif event_type in ['thread.run.created', 'thread.run.queued', 'thread.run.in_progress', 'thread.run.completed']:
+            return EventParser._parse_thread_run(data)
+        elif event_type in ['thread.message.created', 'thread.message.in_progress', 'thread.message.completed']:
+            return EventParser._parse_thread_message(data)
+        elif event_type == 'done':
+            return {'type': 'done', 'data': data}
+        
+        return None
     
     @staticmethod
     def _parse_message_delta(data: dict) -> Optional[MessageDeltaEvent]:

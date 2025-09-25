@@ -73,7 +73,8 @@ def main():
                         if isinstance(parsed_event, MessageDeltaEvent):
                             yield parsed_event.text_value
                 
-                st.write_stream(stream_generator)
+                content_response = st.write_stream(stream_generator)
+        st.session_state.messages.append({"role": "assistant", "content": content_response})
 
 if __name__ == "__main__":
     main()
