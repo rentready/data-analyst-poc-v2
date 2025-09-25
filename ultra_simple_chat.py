@@ -65,11 +65,10 @@ def main():
         with st.chat_message("assistant"):
             with st.spinner("Thinking...", show_time=True):
                 stream = get_response(st.session_state.thread_id, prompt, project_endpoint, agent_id)
-
-            status_container = st.empty()
                 
             # Create generator for st.write_stream using EventParser
             def stream_generator():
+                status_container = st.empty()
                 for event_bytes in stream.response_iterator:
                     parsed_event = EventParser.parse_event(event_bytes)
                     if isinstance(parsed_event, MessageDeltaEvent):
