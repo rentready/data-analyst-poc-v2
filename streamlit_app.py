@@ -6,7 +6,7 @@ import streamlit as st
 
 # Import our custom modules
 from src.config import get_config, setup_environment_variables, get_auth_config, get_mcp_config
-from src.auth import initialize_msal_auth, get_credential, is_authenticated
+from src.auth import initialize_msal_auth
 from src.ai_client import AzureAIClient, handle_chat, get_or_create_thread
 from src.mcp_client import get_mcp_token_sync, display_mcp_status
 from src.ui import (
@@ -48,7 +48,7 @@ def initialize_session_state(config: dict, mcp_config: dict = None) -> None:
 
 async def process_chat_message(
     config: dict, 
-    auth_data: dict, 
+    token_credential, 
     prompt: str,
     mcp_config: dict = None,
     on_stream_chunk: callable = None,
@@ -58,7 +58,7 @@ async def process_chat_message(
     
     Args:
         config: Configuration dictionary
-        auth_data: Authentication data
+        token_credential: Azure authentication credential
         prompt: User's message
         mcp_config: MCP configuration dictionary (optional)
         on_stream_chunk: Optional callback for streaming chunks
@@ -66,11 +66,8 @@ async def process_chat_message(
     Returns:
         Tuple of (response_content, annotations)
     """
-    # Get credential
-    credential = get_credential(auth_data)
-    
     # Initialize AI client
-    async with AzureAIClient(config[PROJ_ENDPOINT_KEY], credential) as ai_project:
+    async with AzureAIClient(config[PROJ_ENDPOINT_KEY], token_credential) as ai_project:
         agent_client = ai_project.agents
         
         # Get or create thread
@@ -116,9 +113,13 @@ def main() -> None:
         st.stop()
     
     # Initialize MSAL authentication
-
     with st.sidebar:
-        auth_data = initialize_msal_auth(client_id, authority)
+        token_credential = initialize_msal_auth(client_id, authority)
+    
+    # Check if user is authenticated
+    if not token_credential:
+        st.error("❌ Please sign in to use the chatbot.")
+        st.stop()
     
     # Initialize session state
     initialize_session_state(config, mcp_config)
@@ -141,10 +142,6 @@ def main() -> None:
         # Generate response
         with st.chat_message(ASSISTANT_ROLE):
             try:
-                # Check if user is authenticated
-                if not is_authenticated(auth_data):
-                    st.error("❌ Please sign in to use the chatbot.")
-                    return
                 
                 # Create streaming display
                 streaming_display = StreamingDisplay()
@@ -159,7 +156,7 @@ def main() -> None:
                 
                 # Process chat message with streaming
                 response_content, annotations = asyncio.run(
-                    process_chat_message(config, auth_data, prompt, mcp_config, on_chunk, on_tool_status)
+                    process_chat_message(config, token_credential, prompt, mcp_config, on_chunk, on_tool_status)
                 )
                 
                 # Finalize the streaming display

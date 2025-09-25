@@ -17,7 +17,7 @@ class MSALTokenCredential(TokenCredential):
         return AccessToken(self._access_token, self._expires_at or 0)
 
 
-def initialize_msal_auth(client_id: str, authority: str) -> dict:
+def initialize_msal_auth(client_id: str, authority: str) -> TokenCredential:
     """Initialize MSAL authentication UI.
     
     Args:
@@ -25,7 +25,7 @@ def initialize_msal_auth(client_id: str, authority: str) -> dict:
         authority: Azure AD authority URL
         
     Returns:
-        Authentication data from MSAL
+        TokenCredential instance or None if not authenticated
     """
     auth_data = Msal.initialize_ui(
         client_id=client_id,
@@ -37,10 +37,15 @@ def initialize_msal_auth(client_id: str, authority: str) -> dict:
         sign_in_label="Sign in",
         sign_out_label="Sign out"
     )
-    return auth_data
+    
+    # Check if authentication was successful
+    if not _is_authenticated(auth_data):
+        return None
+        
+    return _get_credential(auth_data)
 
 
-def get_credential(auth_data: dict) -> TokenCredential:
+def _get_credential(auth_data: dict) -> TokenCredential:
     """Get appropriate credential for Azure AI client.
     
     Args:
@@ -62,7 +67,7 @@ def get_credential(auth_data: dict) -> TokenCredential:
         return MSALTokenCredential(auth_data["accessToken"], expires_at)
 
 
-def is_authenticated(auth_data: dict) -> bool:
+def _is_authenticated(auth_data: dict) -> bool:
     """Check if user is authenticated.
     
     Args:
