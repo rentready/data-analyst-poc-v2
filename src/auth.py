@@ -1,10 +1,8 @@
 """Authentication management for Azure AI Foundry Chatbot."""
 
-import streamlit as st
 from streamlit_msal import Msal
 from azure.core.credentials import AccessToken, TokenCredential
 from azure.identity import DefaultAzureCredential
-from typing import Optional
 
 
 class MSALTokenCredential(TokenCredential):
@@ -29,17 +27,16 @@ def initialize_msal_auth(client_id: str, authority: str) -> dict:
     Returns:
         Authentication data from MSAL
     """
-    with st.sidebar:
-        auth_data = Msal.initialize_ui(
-            client_id=client_id,
-            authority=authority,
-            scopes=[],  # Required scope for Azure AI Foundry
-            # Customize (Default values):
-            connecting_label="Connecting",
-            disconnected_label="Disconnected",
-            sign_in_label="Sign in",
-            sign_out_label="Sign out"
-        )
+    auth_data = Msal.initialize_ui(
+        client_id=client_id,
+        authority=authority,
+        scopes=[],  # Required scope for Azure AI Foundry
+        # Customize (Default values):
+        connecting_label="Connecting",
+        disconnected_label="Disconnected",
+        sign_in_label="Sign in",
+        sign_out_label="Sign out"
+    )
     return auth_data
 
 

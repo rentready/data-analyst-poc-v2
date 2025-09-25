@@ -116,7 +116,9 @@ def main() -> None:
         st.stop()
     
     # Initialize MSAL authentication
-    auth_data = initialize_msal_auth(client_id, authority)
+
+    with st.sidebar:
+        auth_data = initialize_msal_auth(client_id, authority)
     
     # Initialize session state
     initialize_session_state(config, mcp_config)
