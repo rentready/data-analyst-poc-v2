@@ -77,7 +77,7 @@ def main():
                         time.sleep(0.02)
                         yield parsed_event.text_value
                     elif hasattr(parsed_event, 'status') and parsed_event.status != 'completed':
-                        status_container.write("Thinking...")
+                        status_container.status("Processing...")
             
             content_response = st.write_stream(stream_generator)
         st.session_state.messages.append({"role": "assistant", "content": content_response})
