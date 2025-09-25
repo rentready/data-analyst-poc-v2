@@ -11,7 +11,7 @@ from src.ai_client import AzureAIClient, handle_chat, get_or_create_thread
 from src.mcp_client import get_mcp_token_sync, display_mcp_status
 from src.ui import (
     render_header, render_messages, render_annotations, 
-    render_error_message, render_spinner_with_message, StreamingDisplay
+    render_error_message, StreamingDisplay
 )
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY, USER_ROLE, ASSISTANT_ROLE
 
@@ -108,13 +108,13 @@ def main() -> None:
     setup_environment_variables()
     
     # Get authentication configuration
-    client_id, tenant_id, authority = get_auth_config()
+    client_id, tenant_id, _ = get_auth_config()
     if not client_id or not tenant_id:
         st.stop()
     
     # Initialize MSAL authentication
     with st.sidebar:
-        token_credential = initialize_msal_auth(client_id, authority)
+        token_credential = initialize_msal_auth(client_id, tenant_id)
     
     # Check if user is authenticated
     if not token_credential:

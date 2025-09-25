@@ -3,7 +3,9 @@
 from streamlit_msal import Msal
 from azure.core.credentials import AccessToken, TokenCredential
 from azure.identity import DefaultAzureCredential
-
+from .constants import (
+    AUTHORITY_BASE_URL
+)
 
 class MSALTokenCredential(TokenCredential):
     """Custom Token Credential for Azure AI Projects using MSAL token."""
@@ -17,16 +19,19 @@ class MSALTokenCredential(TokenCredential):
         return AccessToken(self._access_token, self._expires_at or 0)
 
 
-def initialize_msal_auth(client_id: str, authority: str) -> TokenCredential:
+def initialize_msal_auth(client_id: str, tenant_id: str) -> TokenCredential:
     """Initialize MSAL authentication UI.
     
     Args:
         client_id: Azure AD client ID
-        authority: Azure AD authority URL
+        tenant_id: Azure AD tenant ID
         
     Returns:
         TokenCredential instance or None if not authenticated
     """
+    # Form authority URL from tenant_id
+    authority = f"{AUTHORITY_BASE_URL}/{tenant_id}"
+    
     auth_data = Msal.initialize_ui(
         client_id=client_id,
         authority=authority,
