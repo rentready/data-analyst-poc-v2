@@ -6,32 +6,24 @@ from azure.identity import DefaultAzureCredential
 import time
 from src.config import get_config
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY
+from src.event_parser import EventParser, MessageDeltaEvent
 
 def get_response(thread_id: str, message: str, project_endpoint: str, agent_id: str):
-    """Get AI response using synchronous client."""
+    """Get AI response using sync client."""
     client = AIProjectClient(project_endpoint, DefaultAzureCredential())
     agents_client = client.agents
     
     # Create user message
     agents_client.messages.create(thread_id=thread_id, role="user", content=message)
-    
-    # Create thread run
-    run = agents_client.runs.create(thread_id=thread_id, agent_id=agent_id)
-    
-    # Wait for completion
-    while run.status in ["queued", "in_progress", "requires_action"]:
-        time.sleep(0.5)
-        run = agents_client.runs.get(thread_id=thread_id, run_id=run.id)
-    
-    if run.status == "failed":
-        return f"Error: {run.last_error.message if run.last_error else 'Unknown error'}"
-    
-    # Get response
-    messages = agents_client.messages.list(thread_id=thread_id)
-    for msg in messages:
-        if msg.role == "assistant" and msg.text_messages:
-            return msg.text_messages[0].text.value
-    return "No response"
+
+    # Stream the response
+    stream = agents_client.runs.stream(
+        thread_id=thread_id,
+        agent_id=agent_id,
+        response_format="auto"
+    )
+
+    return stream
 
 def main():
     st.title("🤖 Ultra Simple Chat")
@@ -72,9 +64,16 @@ def main():
         # Get AI response
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                response = get_response(st.session_state.thread_id, prompt, project_endpoint, agent_id)
-                st.write(response)
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                stream = get_response(st.session_state.thread_id, prompt, project_endpoint, agent_id)
+                
+                # Create generator for st.write_stream using EventParser
+                def stream_generator():
+                    for event_bytes in stream.response_iterator:
+                        parsed_event = EventParser.parse_event(event_bytes)
+                        if isinstance(parsed_event, MessageDeltaEvent):
+                            yield parsed_event.text_value
+                
+                st.write_stream(stream_generator)
 
 if __name__ == "__main__":
     main()
