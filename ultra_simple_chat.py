@@ -65,14 +65,19 @@ def main():
         with st.chat_message("assistant"):
             with st.spinner("Thinking...", show_time=True):
                 stream = get_response(st.session_state.thread_id, prompt, project_endpoint, agent_id)
+
+            status_container = st.empty()
                 
             # Create generator for st.write_stream using EventParser
             def stream_generator():
                 for event_bytes in stream.response_iterator:
                     parsed_event = EventParser.parse_event(event_bytes)
                     if isinstance(parsed_event, MessageDeltaEvent):
+                        status_container.empty()
                         time.sleep(0.02)
                         yield parsed_event.text_value
+                    elif hasattr(parsed_event, 'status') and parsed_event.status != 'completed':
+                        status_container.write("Thinking...")
             
             content_response = st.write_stream(stream_generator)
         st.session_state.messages.append({"role": "assistant", "content": content_response})
