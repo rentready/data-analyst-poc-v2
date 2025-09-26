@@ -31,6 +31,46 @@ class ThreadMessageEvent:
     role: str
     content: list
 
+@dataclass
+class ThreadRunStepFailedEvent:
+    """Parsed thread run step failed event."""
+    id: str
+    status: str
+    step_type: str
+    run_id: str
+    assistant_id: str
+    thread_id: str
+    error_code: str
+    error_message: str
+
+@dataclass
+class ThreadRunStepCompletedEvent:
+    """Parsed thread run step completed event."""
+    id: str
+    status: str
+    step_type: str
+    run_id: str
+    assistant_id: str
+    thread_id: str
+
+@dataclass
+class ThreadRunStepDeltaEvent:
+    """Parsed thread run step delta event."""
+    id: str
+    step_details_type: str
+    tool_calls_count: int
+    tool_name: str
+    tool_type: str
+    server_label: str
+    has_output: bool
+    output: str
+
+@dataclass
+class DoneEvent:
+    """Parsed done event."""
+    type: str
+    data: dict
+
 
 class EventParser:
     """Parser for Azure AI Agents streaming events."""
@@ -63,10 +103,6 @@ class EventParser:
                             continue
                 
                 if event_type and data:
-                    # Debug for step.delta events
-                    if event_type == 'thread.run.step.delta':
-                        print(f"DEBUG step.delta: data={data}")
-                        print(f"DEBUG step.delta: delta={data.get('delta')}")
                     # Return the first valid event
                     return EventParser._parse_by_type(event_type, data)
             
@@ -89,10 +125,12 @@ class EventParser:
             return EventParser._parse_thread_run_step(data)
         elif event_type == 'thread.run.step.delta':
             return EventParser._parse_thread_run_step_delta(data)
+        elif event_type == 'thread.run.step.failed':
+            return EventParser._parse_thread_run_step_failed(data)
         elif event_type == 'thread.message.delta':
             return EventParser._parse_message_delta(data)
         elif event_type == 'done':
-            return {'type': 'done', 'data': data}
+            return DoneEvent(type='done', data=data)
         
         # Return generic event for unknown types
         return {'type': event_type, 'data': data}
@@ -143,57 +181,78 @@ class EventParser:
         return None
 
     @staticmethod
-    def _parse_thread_run_step(data: dict) -> Optional[dict]:
+    def _parse_thread_run_step(data: dict) -> Optional[ThreadRunStepCompletedEvent]:
         """Parse thread run step event."""
         try:
-            return {
-                'type': 'thread.run.step.completed',
-                'id': data.get('id'),
-                'status': data.get('status'),
-                'step_type': data.get('type'),
-                'run_id': data.get('run_id'),
-                'assistant_id': data.get('assistant_id'),
-                'thread_id': data.get('thread_id')
-            }
+            return ThreadRunStepCompletedEvent(
+                id=data.get('id', ''),
+                status=data.get('status', ''),
+                step_type=data.get('type', ''),
+                run_id=data.get('run_id', ''),
+                assistant_id=data.get('assistant_id', ''),
+                thread_id=data.get('thread_id', '')
+            )
         except Exception as e:
             print(f"Error parsing thread run step event: {e}")
             return None
 
     @staticmethod
-    def _parse_thread_run_step_delta(data: dict) -> Optional[dict]:
+    def _parse_thread_run_step_delta(data: dict) -> Optional[ThreadRunStepDeltaEvent]:
         """Parse thread run step delta event (MCP tool execution)."""
         try:
             delta = data.get('delta', {})
             step_details = delta.get('step_details', {})
             tool_calls = step_details.get('tool_calls', []) if step_details else []
             
-            result = {
-                'type': 'thread.run.step.delta',
-                'id': data.get('id'),
-                'step_details_type': step_details.get('type') if step_details else None,
-                'tool_calls_count': len(tool_calls) if tool_calls else 0
-            }
+            # Debug: print the structure we're working with
+            print(f"DEBUG: step_details = {step_details}")
+            print(f"DEBUG: tool_calls = {tool_calls}")
             
             # Extract tool call information
+            tool_name = 'unknown'
+            tool_type = 'unknown'
+            server_label = 'unknown'
+            has_output = False
+            output_preview = ''
+            
             if tool_calls and len(tool_calls) > 0:
                 tool_call = tool_calls[0]  # Usually one tool call
-                result.update({
-                    'tool_name': tool_call.get('name'),
-                    'tool_type': tool_call.get('type'),
-                    'server_label': tool_call.get('server_label'),
-                    'has_output': bool(tool_call.get('output'))
-                })
-                
-                # Truncate output for logging if too long
-                output = tool_call.get('output', '')
-                if output and len(output) > 200:
-                    result['output_preview'] = output[:200] + '...'
-                else:
-                    result['output_preview'] = output
+                tool_name = tool_call.get('name', 'unknown')
+                tool_type = tool_call.get('type', 'unknown')
+                server_label = tool_call.get('server_label', 'unknown')
+                has_output = bool(tool_call.get('output'))
+                output_preview = tool_call.get('output', '')
             
-            return result
+            return ThreadRunStepDeltaEvent(
+                id=data.get('id', ''),
+                step_details_type=step_details.get('type') if step_details else '',
+                tool_calls_count=len(tool_calls) if tool_calls else 0,
+                tool_name=tool_name,
+                tool_type=tool_type,
+                server_label=server_label,
+                has_output=has_output,
+                output=output_preview
+            )
         except Exception as e:
             print(f"Error parsing thread run step delta event: {e}")
+            return None
+
+    @staticmethod
+    def _parse_thread_run_step_failed(data: dict) -> Optional[ThreadRunStepFailedEvent]:
+        """Parse thread run step failed event."""
+        try:
+            return ThreadRunStepFailedEvent(
+                id=data.get('id', ''),
+                status=data.get('status', ''),
+                step_type=data.get('type', ''),
+                run_id=data.get('run_id', ''),
+                assistant_id=data.get('assistant_id', ''),
+                thread_id=data.get('thread_id', ''),
+                error_code=data.get('last_error', {}).get('code', ''),
+                error_message=data.get('last_error', {}).get('message', '')
+            )
+        except Exception as e:
+            print(f"Error parsing thread run step failed event: {e}")
             return None
     
     @staticmethod

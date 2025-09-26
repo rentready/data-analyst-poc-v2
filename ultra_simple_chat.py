@@ -7,7 +7,7 @@ import logging
 import time
 from src.config import get_config, get_mcp_config, setup_environment_variables
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY
-from src.event_parser import EventParser, MessageDeltaEvent
+from src.event_parser import EventParser, MessageDeltaEvent, ThreadRunStepFailedEvent, ThreadRunStepCompletedEvent, ThreadRunStepDeltaEvent, DoneEvent
 from src.mcp_client import get_mcp_token_sync
 from azure.ai.agents.models import McpTool
 
@@ -120,22 +120,28 @@ def main():
                         status_container.empty()
                         time.sleep(0.02)
                         yield parsed_event.text_value
+                    elif hasattr(parsed_event, 'status') and parsed_event.status == 'completed':
+                        logger.info(f"✅ {parsed_event.__class__.__name__} completed")
                     elif hasattr(parsed_event, 'status') and parsed_event.status != 'completed':
                         logger.info(f"Processing: {parsed_event.status}")
                         status_container.status("Processing...")
+                    elif isinstance(parsed_event, ThreadRunStepCompletedEvent):
+                        logger.info(f"Step completed: {parsed_event.step_type}")
+                    elif isinstance(parsed_event, ThreadRunStepDeltaEvent):
+                        logger.info(f"🔧 MCP Tool: {parsed_event.tool_name} ({parsed_event.server_label})")
+                        if parsed_event.output:
+                            output = parsed_event.output
+                            # Truncate for console display if too long
+                            if len(output) > 500:
+                                logger.info(f"📊 Tool output: {output[:500]}...")
+                            else:
+                                logger.info(f"📊 Tool output: {output}")
+                    elif isinstance(parsed_event, ThreadRunStepFailedEvent):
+                        logger.info(f"❌ Tool failed: {parsed_event.error_code} - {parsed_event.error_message}")
+                    elif isinstance(parsed_event, DoneEvent):
+                        logger.info("Response completed")
                     elif isinstance(parsed_event, dict):
-                        if parsed_event.get('type') == 'thread.run.step.completed':
-                            logger.info(f"Step completed: {parsed_event.get('step_type', 'unknown')}")
-                        elif parsed_event.get('type') == 'thread.run.step.delta':
-                            tool_name = parsed_event.get('tool_name', 'unknown')
-                            server_label = parsed_event.get('server_label', 'unknown')
-                            logger.info(f"🔧 MCP Tool: {tool_name} ({server_label})")
-                            if parsed_event.get('output_preview'):
-                                logger.info(f"📊 Tool output: {parsed_event.get('output_preview')}")
-                        elif parsed_event.get('type') == 'done':
-                            logger.info("Response completed")
-                        else:
-                            logger.info(f"Event: {parsed_event.get('type', 'unknown')}")
+                        logger.info(f"Event: {parsed_event.get('type', 'unknown')}")
                     else:
                         logger.info(f"Unknown event: {event_bytes}")
             
