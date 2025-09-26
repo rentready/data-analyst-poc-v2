@@ -128,14 +128,15 @@ def main():
                     elif isinstance(parsed_event, ThreadRunStepCompletedEvent):
                         logger.info(f"Step completed: {parsed_event.step_type}")
                     elif isinstance(parsed_event, ThreadRunStepDeltaEvent):
-                        logger.info(f"🔧 MCP Tool: {parsed_event.tool_name} ({parsed_event.server_label})")
-                        if parsed_event.output:
-                            output = parsed_event.output
-                            # Truncate for console display if too long
-                            if len(output) > 500:
-                                logger.info(f"📊 Tool output: {output[:500]}...")
-                            else:
-                                logger.info(f"📊 Tool output: {output}")
+                        if parsed_event.has_output:
+                            logger.info(f"🔧 MCP Tool: {parsed_event.tool_name} ({parsed_event.server_label})")
+                            if parsed_event.output:
+                                output = parsed_event.output
+                                # Truncate for console display if too long
+                                if len(output) > 500:
+                                    logger.info(f"📊 Tool output: {output[:500]}...")
+                                else:
+                                    logger.info(f"📊 Tool output: {output}")
                     elif isinstance(parsed_event, ThreadRunStepFailedEvent):
                         logger.info(f"❌ Tool failed: {parsed_event.error_code} - {parsed_event.error_message}")
                     elif isinstance(parsed_event, DoneEvent):

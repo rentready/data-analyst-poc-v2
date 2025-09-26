@@ -1,9 +1,12 @@
 """Event parser for Azure AI Agents streaming events."""
 
 import json
+import logging
 from typing import Optional, Generator, Any
 from dataclasses import dataclass
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @dataclass
 class MessageDeltaEvent:
@@ -109,7 +112,7 @@ class EventParser:
             return None
                 
         except Exception as e:
-            print(f"Error parsing event: {e}")
+            logging.error(f"Error parsing event: {e}")
             return None
     
     @staticmethod
@@ -163,7 +166,7 @@ class EventParser:
                 assistant_id=data.get('assistant_id', '')
             )
         except Exception as e:
-            print(f"Error parsing thread run: {e}")
+            logging.error(f"Error parsing thread run: {e}")
         return None
     
     @staticmethod
@@ -177,7 +180,7 @@ class EventParser:
                 content=data.get('content', [])
             )
         except Exception as e:
-            print(f"Error parsing thread message: {e}")
+            logging.error(f"Error parsing thread message: {e}")
         return None
 
     @staticmethod
@@ -193,7 +196,7 @@ class EventParser:
                 thread_id=data.get('thread_id', '')
             )
         except Exception as e:
-            print(f"Error parsing thread run step event: {e}")
+            logging.error(f"Error parsing thread run step event: {e}")
             return None
 
     @staticmethod
@@ -234,7 +237,7 @@ class EventParser:
                 output=output_preview
             )
         except Exception as e:
-            print(f"Error parsing thread run step delta event: {e}")
+            logging.error(f"Error parsing thread run step delta event: {e}")
             return None
 
     @staticmethod
@@ -252,7 +255,7 @@ class EventParser:
                 error_message=data.get('last_error', {}).get('message', '')
             )
         except Exception as e:
-            print(f"Error parsing thread run step failed event: {e}")
+            logging.error(f"Error parsing thread run step failed event: {e}")
             return None
     
     @staticmethod
