@@ -10,27 +10,11 @@ from src.config import get_config, get_mcp_config, setup_environment_variables
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY
 from src.event_parser import EventParser, MessageDeltaEvent, ThreadRunStepFailedEvent, ThreadRunStepCompletedEvent, ThreadRunStepDeltaEvent, DoneEvent, IncompleteEvent
 from src.mcp_client import get_mcp_token_sync
+from src.utils import extract_tool_result
 from azure.ai.agents.models import McpTool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def extract_tool_result(output: str) -> str:
-    """Extract TOOL RESULT section from tool output."""
-    try:
-        # Look for "TOOL RESULT:" pattern
-        if "TOOL RESULT:" in output:
-            # Find the start of TOOL RESULT section
-            start_idx = output.find("TOOL RESULT:")
-            if start_idx != -1:
-                # Extract everything after "TOOL RESULT:"
-                result = output[start_idx + len("TOOL RESULT:"):].strip()
-                return result
-        return None
-    except Exception as e:
-        logger.error(f"Error extracting tool result: {e}")
-        return None
 
 
 def get_response(thread_id: str, message: str, project_endpoint: str, agent_id: str):

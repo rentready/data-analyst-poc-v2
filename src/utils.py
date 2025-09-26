@@ -41,3 +41,28 @@ def safe_get(dictionary: Dict[str, Any], key: str, default: Any = None) -> Any:
         Value from dictionary or default
     """
     return dictionary.get(key, default) if dictionary else default
+
+
+def extract_tool_result(output: str) -> str:
+    """Extract TOOL RESULT section from tool output.
+    
+    Args:
+        output: Full tool output string
+        
+    Returns:
+        Extracted TOOL RESULT section or None if not found
+    """
+    try:
+        # Look for "TOOL RESULT:" pattern
+        if "TOOL RESULT:" in output:
+            # Find the start of TOOL RESULT section
+            start_idx = output.find("TOOL RESULT:")
+            if start_idx != -1:
+                # Extract everything after "TOOL RESULT:"
+                result = output[start_idx + len("TOOL RESULT:"):].strip()
+                return result
+        return None
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.error(f"Error extracting tool result: {e}")
+        return None
