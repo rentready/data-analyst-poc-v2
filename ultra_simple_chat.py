@@ -16,6 +16,23 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def extract_tool_result(output: str) -> str:
+    """Extract TOOL RESULT section from tool output."""
+    try:
+        # Look for "TOOL RESULT:" pattern
+        if "TOOL RESULT:" in output:
+            # Find the start of TOOL RESULT section
+            start_idx = output.find("TOOL RESULT:")
+            if start_idx != -1:
+                # Extract everything after "TOOL RESULT:"
+                result = output[start_idx + len("TOOL RESULT:"):].strip()
+                return result
+        return None
+    except Exception as e:
+        logger.error(f"Error extracting tool result: {e}")
+        return None
+
+
 def get_response(thread_id: str, message: str, project_endpoint: str, agent_id: str):
     """Get AI response using sync client."""
     client = AIProjectClient(project_endpoint, DefaultAzureCredential())
@@ -142,12 +159,9 @@ def main():
                         if parsed_event.has_output:
                             logger.info(f"🔧 MCP Tool: {parsed_event.tool_name} ({parsed_event.server_label})")
                             if parsed_event.output:
-                                output = parsed_event.output
-                                # Truncate for console display if too long
-                                if len(output) > 5000:
-                                    logger.info(f"📊 Tool output: {output[:5000]}...")
-                                else:
-                                    logger.info(f"📊 Tool output: {output}")
+                                tool_result = extract_tool_result(parsed_event.output)
+                                yield tool_result
+
                     elif isinstance(parsed_event, ThreadRunStepFailedEvent):
                         logger.info(f"❌ Tool failed: {parsed_event.error_code} - {parsed_event.error_message}")
                     elif isinstance(parsed_event, DoneEvent):
