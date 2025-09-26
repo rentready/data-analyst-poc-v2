@@ -1,5 +1,6 @@
 """Ultra simple chat - following Microsoft documentation."""
 
+from pickle import NONE
 import streamlit as st
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
@@ -7,7 +8,7 @@ import logging
 import time
 from src.config import get_config, get_mcp_config, setup_environment_variables
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY
-from src.event_parser import EventParser, MessageDeltaEvent, ThreadRunStepFailedEvent, ThreadRunStepCompletedEvent, ThreadRunStepDeltaEvent, DoneEvent
+from src.event_parser import EventParser, MessageDeltaEvent, ThreadRunStepFailedEvent, ThreadRunStepCompletedEvent, ThreadRunStepDeltaEvent, DoneEvent, IncompleteEvent
 from src.mcp_client import get_mcp_token_sync
 from azure.ai.agents.models import McpTool
 
@@ -114,8 +115,18 @@ def main():
             # Create generator for st.write_stream using EventParser
             def stream_generator():
                 status_container = st.empty()
-                for event_bytes in stream.response_iterator:
+                event_bytes = b''
+                for raw_event_bytes in stream.response_iterator:
+
+                    event_bytes += raw_event_bytes
                     parsed_event = EventParser.parse_event(event_bytes)
+
+                    if isinstance(parsed_event, IncompleteEvent):
+                        continue
+
+                    # Reset event_bytes only after successful parsing
+                    event_bytes = b''
+
                     if isinstance(parsed_event, MessageDeltaEvent):
                         status_container.empty()
                         time.sleep(0.02)
@@ -133,8 +144,8 @@ def main():
                             if parsed_event.output:
                                 output = parsed_event.output
                                 # Truncate for console display if too long
-                                if len(output) > 500:
-                                    logger.info(f"📊 Tool output: {output[:500]}...")
+                                if len(output) > 5000:
+                                    logger.info(f"📊 Tool output: {output[:5000]}...")
                                 else:
                                     logger.info(f"📊 Tool output: {output}")
                     elif isinstance(parsed_event, ThreadRunStepFailedEvent):

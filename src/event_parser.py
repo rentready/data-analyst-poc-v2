@@ -74,6 +74,12 @@ class DoneEvent:
     type: str
     data: dict
 
+@dataclass
+class IncompleteEvent:
+    """Parsed incomplete event when data parsing fails."""
+    event_type: str
+    raw_data: str
+
 
 class EventParser:
     """Parser for Azure AI Agents streaming events."""
@@ -103,11 +109,13 @@ class EventParser:
                         try:
                             data = json.loads(data_str)
                         except json.JSONDecodeError:
-                            continue
+                            return IncompleteEvent(event_type=event_type or 'unknown', raw_data=data_str)
                 
                 if event_type and data:
                     # Return the first valid event
                     return EventParser._parse_by_type(event_type, data)
+                else:
+                    return IncompleteEvent(event_type=event_type or 'unknown', raw_data=event)
             
             return None
                 
@@ -207,16 +215,12 @@ class EventParser:
             step_details = delta.get('step_details', {})
             tool_calls = step_details.get('tool_calls', []) if step_details else []
             
-            # Debug: print the structure we're working with
-            print(f"DEBUG: step_details = {step_details}")
-            print(f"DEBUG: tool_calls = {tool_calls}")
-            
-            # Extract tool call information
+            # Extract tool call information safely
             tool_name = 'unknown'
             tool_type = 'unknown'
             server_label = 'unknown'
             has_output = False
-            output_preview = ''
+            output = ''
             
             if tool_calls and len(tool_calls) > 0:
                 tool_call = tool_calls[0]  # Usually one tool call
@@ -224,7 +228,7 @@ class EventParser:
                 tool_type = tool_call.get('type', 'unknown')
                 server_label = tool_call.get('server_label', 'unknown')
                 has_output = bool(tool_call.get('output'))
-                output_preview = tool_call.get('output', '')
+                output = tool_call.get('output', '')
             
             return ThreadRunStepDeltaEvent(
                 id=data.get('id', ''),
@@ -234,7 +238,7 @@ class EventParser:
                 tool_type=tool_type,
                 server_label=server_label,
                 has_output=has_output,
-                output=output_preview
+                output=output
             )
         except Exception as e:
             logging.error(f"Error parsing thread run step delta event: {e}")
