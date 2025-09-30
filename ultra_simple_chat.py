@@ -39,6 +39,86 @@ def parse_tool_result(output):
         # Return full output if JSON parsing fails
         return output
 
+def show_step_result(step):
+    """Show step result based on step type and status."""
+    step_type = getattr(step, 'type', 'unknown')
+    step_status = getattr(step, 'status', 'unknown')
+    step_id = getattr(step, 'id', 'unknown')
+    
+    # Map status to emoji and color
+    status_emoji = {
+        'in_progress': '🔄',
+        'completed': '✅', 
+        'failed': '❌',
+        'cancelled': '⏹️',
+        'expired': '⏰'
+    }
+    
+    emoji = status_emoji.get(step_status, '❓')
+    
+    with st.status(f"{emoji} {step_type.title()} - {step_status.title()}", expanded=True):
+        
+        if step_type == "tool_calls":
+            show_tool_calls_step(step)
+        elif step_type == "message_creation":
+            show_message_creation_step(step)
+        else:
+            st.info(f"Unknown step type: {step_type}")
+            st.json(step.as_dict() if hasattr(step, 'as_dict') else str(step))
+    
+    st.divider()
+
+def show_tool_calls_step(step):
+    """Show tool calls step details."""
+    step_details = getattr(step, 'step_details', {})
+    
+    if 'tool_calls' in step_details:
+        for tool_call in step_details['tool_calls']:
+            tool_name = tool_call.get('name', 'Unknown Tool')
+            tool_type = tool_call.get('type', 'unknown')
+            arguments = tool_call.get('arguments', '')
+            output = tool_call.get('output', '')
+            
+            st.subheader(f"🔧 {tool_name} ({tool_type})")
+            
+            # Show arguments
+            if arguments:
+                with st.expander("📝 Arguments"):
+                    try:
+                        args_json = json.loads(arguments)
+                        st.json(args_json)
+                    except:
+                        st.code(arguments)
+            
+            # Show output/result
+            if output:
+                result = parse_tool_result(output)
+                if result:
+                    show_structured_result(result)
+                else:
+                    with st.expander("📤 Output"):
+                        st.text(output)
+            else:
+                st.info("⏳ Tool is executing...")
+    
+    # Show usage if available
+    usage = getattr(step, 'usage', None)
+    if usage:
+        st.info(f"📊 Usage: {usage}")
+
+def show_message_creation_step(step):
+    """Show message creation step details."""
+    step_details = getattr(step, 'step_details', {})
+    
+    if 'message_creation' in step_details:
+        message_id = step_details['message_creation'].get('message_id', 'Unknown')
+        st.info(f"💬 Creating message: {message_id}")
+    
+    # Show usage if available
+    usage = getattr(step, 'usage', None)
+    if usage:
+        st.info(f"📊 Usage: {usage}")
+
 def show_structured_result(result):
     """Show structured result data in a simple format."""
     if isinstance(result, dict):
@@ -82,9 +162,6 @@ mcp_tool = McpTool(
 mcp_tool.update_headers("authorization", f"bearer {mcp_token}")
 #mcp_tool.set_approval_mode("never")
 
-client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-agents_client = client.agents
-
 if 'stage' not in st.session_state:
     st.session_state.stage = 'user_input'
 if 'run_id' not in st.session_state:
@@ -94,6 +171,9 @@ def on_tool_approval(success: bool):
     st.session_state.stage = 'tool_approved'
     # Use the stored run_id from session state
     if st.session_state.run_id:
+        client = AIProjectClient(project_endpoint, DefaultAzureCredential())
+        agents_client = client.agents
+        
         # Get the current run status
         run = agents_client.runs.get(thread_id=st.session_state.thread_id, run_id=st.session_state.run_id)
         
@@ -153,6 +233,10 @@ def show_tool_result(tool_name, result):
 
 def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status_container=None):
     """Poll run status until completion, handling tool approvals if needed."""
+    # Initialize shown steps tracking if not exists
+    if 'shown_steps' not in st.session_state:
+        st.session_state.shown_steps = set()
+    
     while True:
         run = agents_client.runs.get(thread_id=thread_id, run_id=run_id)
         logger.info(f"Run status: {run.status}")
@@ -167,12 +251,18 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status
         # Get run steps to see what's happening
         if run.status == "in_progress":
             try:
+                # Try different API endpoints for getting steps
+                client = AIProjectClient(project_endpoint, DefaultAzureCredential())
                 steps = client.agents.run_steps.list(thread_id=thread_id, run_id=run_id)
                 logger.info(f"Steps: {steps}")
                 for step in steps:
                     step_type = getattr(step, 'type', 'unknown')
                     step_status = getattr(step, 'status', 'unknown')
                     step_id = getattr(step, 'id', 'unknown')
+                    
+                    # Skip if step already shown
+                    if step_id in st.session_state.shown_steps:
+                        continue
                     
                     logger.info(f"Step {step_id}: {step_type} - {step_status}")
                     
@@ -181,7 +271,20 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status
                         step_details = step.step_details
                         logger.info(f"  Step details: {step_details}")
                         
-                        if step_type == "message_creation" and 'message_creation' in step_details:
+                        if step_type == "tool_calls" and 'tool_calls' in step_details:
+                            for tool_call in step_details['tool_calls']:
+                                tool_name = tool_call.get('name', 'unknown')
+                                tool_type = tool_call.get('type', 'unknown')
+                                arguments = tool_call.get('arguments', '')
+                                output = tool_call.get('output', '')
+                                
+                                logger.info(f"  Tool call: {tool_name} ({tool_type})")
+                                if arguments:
+                                    logger.info(f"    Arguments: {arguments}")
+                                if output:
+                                    logger.info(f"    Output: {output}")
+                        
+                        elif step_type == "message_creation" and 'message_creation' in step_details:
                             message_id = step_details['message_creation'].get('message_id', 'unknown')
                             logger.info(f"  Message creation: {message_id}")
                             logger.info(f"  Step details: {step_details}")
@@ -190,13 +293,20 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status
                             if step_status in ["completed", "in_progress"]:
                                 try:
                                     message_content = get_message_by_id(agents_client, thread_id, message_id)
-                                    if message_content:
-                                        st.write(message_content)
-                                        st.session_state.messages.append({"role": "assistant", "content": message_content})
+                                    if message_content and message_content != "No content":
+                                        logger.info(f"  Message content: {message_content[:200]}...")
+                                        
+                                        # Check if message already shown to avoid duplicates
+                                        if not any(msg.get("content") == message_content for msg in st.session_state.messages):
+                                            # Show message to user immediately
+                                            st.write(message_content)
+                                            st.session_state.messages.append({"role": "assistant", "content": message_content})
+                                            # Mark step as shown
+                                            st.session_state.shown_steps.add(step_id)
                                 except Exception as e:
                                     logger.error(f"Error getting message content: {e}")
                         
-                        elif step_type == "tool_calls":
+                        elif step_type == "tool_calls" and step_status == "completed":
                             # Show tool results immediately when completed
                             try:
                                 tool_calls = step_details.get('tool_calls', [])
@@ -213,8 +323,25 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status
                                             # Show raw output if parsing failed
                                             with st.status(f"🔧 {tool_name} completed", expanded=True):
                                                 st.text(tool_output)
+                                        # Mark step as shown
+                                        st.session_state.shown_steps.add(step_id)
                             except Exception as e:
                                 logger.error(f"Error showing tool results: {e}")
+                        
+                        # Show step result in real-time
+                        if step_status == "completed":
+                            show_step_result(step)
+                            # Mark step as shown
+                            st.session_state.shown_steps.add(step_id)
+                        
+                        elif step_type == "activities" and 'activities' in step_details:
+                            activities = step_details['activities']
+                            logger.info(f"  Activities: {activities}")
+                    
+                    # Log usage if available
+                    usage = getattr(step, 'usage', None)
+                    if usage:
+                        logger.info(f"  Usage: {usage}")
                         
             except Exception as e:
                 logger.error(f"Error getting run steps: {e}")
@@ -248,6 +375,9 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status
 def submit_tool_approvals(thread_id: str, run_id: str, tool_calls: list, approved: bool, project_endpoint: str):
     """Submit tool approvals to Azure AI Foundry."""
     try:
+        client = AIProjectClient(project_endpoint, DefaultAzureCredential())
+        agents_client = client.agents
+
         run = agents_client.runs.get(thread_id=thread_id, run_id=run_id)
 
         logger.info(f"Run status: {run.status} required action: {run.required_action}")
@@ -289,6 +419,9 @@ def submit_tool_approvals(thread_id: str, run_id: str, tool_calls: list, approve
 
 def create_run(thread_id: str, message: str, project_endpoint: str, agent_id: str):
     """Get AI response using sync client."""
+    client = AIProjectClient(project_endpoint, DefaultAzureCredential())
+    agents_client = client.agents
+    
     # Create user message
     agents_client.messages.create(thread_id=thread_id, role="user", content=message)
 
@@ -330,9 +463,14 @@ def main():
         st.session_state.messages = []
     if "thread_id" not in st.session_state:
         st.session_state.thread_id = None
+    if "pending_approval" not in st.session_state:
+        st.session_state.pending_approval = None
+    if "shown_steps" not in st.session_state:
+        st.session_state.shown_steps = set()
     
     # Create thread
     if not st.session_state.thread_id:
+        client = AIProjectClient(project_endpoint, DefaultAzureCredential())
         thread = client.agents.threads.create()
         st.session_state.thread_id = thread.id
     
@@ -340,6 +478,9 @@ def main():
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
+
+    client = AIProjectClient(project_endpoint, DefaultAzureCredential())
+    agents_client = client.agents
 
     run = None
     prompt = None
@@ -349,13 +490,14 @@ def main():
         with st.chat_message("user"):
             st.write(prompt)
         # Get AI response
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking...", show_time=True):
-                run = create_run(st.session_state.thread_id, prompt, project_endpoint, agent_id)
+        with st.spinner("Thinking...", show_time=True):
+            # Clear shown steps for new run
+            st.session_state.shown_steps = set()
+            run = create_run(st.session_state.thread_id, prompt, project_endpoint, agent_id)
             
-            logger.info(f"Run created: {run}")
-            # Store run_id for potential tool approval
-            st.session_state.run_id = run.id
+        logger.info(f"Run created: {run}")
+        # Store run_id for potential tool approval
+        st.session_state.run_id = run.id
 
     if st.session_state.stage == 'tool_approved':
         logger.info(f"Tool approved stage")
@@ -366,7 +508,8 @@ def main():
 
     if run:
     # Process the run
-        result = poll_run_until_completion(agents_client, st.session_state.thread_id, st.session_state.run_id, st.empty())
+        with st.chat_message("assistant"):
+            result = poll_run_until_completion(agents_client, st.session_state.thread_id, st.session_state.run_id, st.empty())
     
     if result == "requires_approval":
         st.session_state.stage = 'tool_approval'
