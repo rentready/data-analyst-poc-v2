@@ -82,6 +82,9 @@ mcp_tool = McpTool(
 mcp_tool.update_headers("authorization", f"bearer {mcp_token}")
 #mcp_tool.set_approval_mode("never")
 
+client = AIProjectClient(project_endpoint, DefaultAzureCredential())
+agents_client = client.agents
+
 if 'stage' not in st.session_state:
     st.session_state.stage = 'user_input'
 if 'run_id' not in st.session_state:
@@ -91,9 +94,6 @@ def on_tool_approval(success: bool):
     st.session_state.stage = 'tool_approved'
     # Use the stored run_id from session state
     if st.session_state.run_id:
-        client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-        agents_client = client.agents
-        
         # Get the current run status
         run = agents_client.runs.get(thread_id=st.session_state.thread_id, run_id=st.session_state.run_id)
         
@@ -167,8 +167,6 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status
         # Get run steps to see what's happening
         if run.status == "in_progress":
             try:
-                # Try different API endpoints for getting steps
-                client = AIProjectClient(project_endpoint, DefaultAzureCredential())
                 steps = client.agents.run_steps.list(thread_id=thread_id, run_id=run_id)
                 logger.info(f"Steps: {steps}")
                 for step in steps:
@@ -250,9 +248,6 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status
 def submit_tool_approvals(thread_id: str, run_id: str, tool_calls: list, approved: bool, project_endpoint: str):
     """Submit tool approvals to Azure AI Foundry."""
     try:
-        client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-        agents_client = client.agents
-
         run = agents_client.runs.get(thread_id=thread_id, run_id=run_id)
 
         logger.info(f"Run status: {run.status} required action: {run.required_action}")
@@ -294,9 +289,6 @@ def submit_tool_approvals(thread_id: str, run_id: str, tool_calls: list, approve
 
 def create_run(thread_id: str, message: str, project_endpoint: str, agent_id: str):
     """Get AI response using sync client."""
-    client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-    agents_client = client.agents
-    
     # Create user message
     agents_client.messages.create(thread_id=thread_id, role="user", content=message)
 
@@ -338,12 +330,9 @@ def main():
         st.session_state.messages = []
     if "thread_id" not in st.session_state:
         st.session_state.thread_id = None
-    if "pending_approval" not in st.session_state:
-        st.session_state.pending_approval = None
     
     # Create thread
     if not st.session_state.thread_id:
-        client = AIProjectClient(project_endpoint, DefaultAzureCredential())
         thread = client.agents.threads.create()
         st.session_state.thread_id = thread.id
     
@@ -351,9 +340,6 @@ def main():
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
-
-    client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-    agents_client = client.agents
 
     run = None
     prompt = None
