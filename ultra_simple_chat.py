@@ -132,7 +132,10 @@ def show_structured_result(result):
                 st.error(f"**Error:** {result['error']}")
     
     # Always show the raw data
-    st.json(result)
+    if isinstance(result, dict):
+        st.json(result)
+    else:
+        st.markdown(result)
 
 # Get configuration
 config = get_config()
@@ -231,12 +234,13 @@ def show_tool_result(tool_name, result):
     with st.status(f"✅ {tool_name} completed", expanded=True):
         show_structured_result(result)
 
-def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status_container=None):
+def poll_run_until_completion(agents_client, thread_id: str, run_id: str):
     """Poll run status until completion, handling tool approvals if needed."""
     # Initialize shown steps tracking if not exists
     if 'shown_steps' not in st.session_state:
         st.session_state.shown_steps = set()
     
+    status_container = st.empty()
     while True:
         run = agents_client.runs.get(thread_id=thread_id, run_id=run_id)
         logger.info(f"Run status: {run.status}")
@@ -305,28 +309,6 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str, status
                                             st.session_state.shown_steps.add(step_id)
                                 except Exception as e:
                                     logger.error(f"Error getting message content: {e}")
-                        
-                        elif step_type == "tool_calls" and step_status == "completed":
-                            # Show tool results immediately when completed
-                            try:
-                                tool_calls = step_details.get('tool_calls', [])
-                                for tool_call in tool_calls:
-                                    tool_name = tool_call.get('name', 'Unknown Tool')
-                                    tool_output = tool_call.get('output', '')
-                                    
-                                    if tool_output:
-                                        # Parse and show tool result
-                                        parsed_result = parse_tool_result(tool_output)
-                                        if parsed_result:
-                                            show_tool_result(tool_name, parsed_result)
-                                        else:
-                                            # Show raw output if parsing failed
-                                            with st.status(f"🔧 {tool_name} completed", expanded=True):
-                                                st.text(tool_output)
-                                        # Mark step as shown
-                                        st.session_state.shown_steps.add(step_id)
-                            except Exception as e:
-                                logger.error(f"Error showing tool results: {e}")
                         
                         # Show step result in real-time
                         if step_status == "completed":
@@ -477,7 +459,11 @@ def main():
     # Display messages
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
-            st.write(msg["content"])
+            logger.info(f"Message: {msg}")
+            if "tool_name" in msg:
+                show_tool_result(msg["tool_name"], msg["content"])
+            else:
+                st.write(msg["content"])
 
     client = AIProjectClient(project_endpoint, DefaultAzureCredential())
     agents_client = client.agents
@@ -509,18 +495,13 @@ def main():
     if run:
     # Process the run
         with st.chat_message("assistant"):
-            result = poll_run_until_completion(agents_client, st.session_state.thread_id, st.session_state.run_id, st.empty())
+            result = poll_run_until_completion(agents_client, st.session_state.thread_id, st.session_state.run_id)
     
     if result == "requires_approval":
         st.session_state.stage = 'tool_approval'
         return
     elif result == "completed":
-        # Get and display the latest assistant message
-        latest_message = get_latest_assistant_message(agents_client, st.session_state.thread_id)
-        if latest_message:
-            st.write(latest_message)
-            st.session_state.messages.append({"role": "assistant", "content": latest_message})
-        
+
         # Reset stage to allow new user input
         st.session_state.stage = 'user_input'
         st.session_state.run_id = None
