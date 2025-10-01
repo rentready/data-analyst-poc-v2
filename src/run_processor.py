@@ -41,7 +41,7 @@ class RunProcessor:
                 run = self.agents_client.runs.get(thread_id=thread_id, run_id=run_id)
                 logger.info(f"Run status: {run.status}")
                 
-                # Check for approval requirement FIRST (blocks everything)
+                # Check for approval requirement
                 if run.status == "requires_action" and isinstance(run.required_action, SubmitToolApprovalAction):
                     event = RequiresApprovalEvent(
                         run_id=run.id,
@@ -51,6 +51,11 @@ class RunProcessor:
                     
                     # Only yield once, then exit
                     if event.event_id not in self.seen_events:
+                        # FIRST: Process any completed steps before showing approval
+                        logger.info(f"🔒 Approval required - processing completed steps first")
+                        yield from self._process_steps(thread_id, run_id)
+                        
+                        # THEN: Yield approval event
                         self.seen_events.add(event.event_id)
                         self.is_blocked = True
                         self.blocked_event = event
