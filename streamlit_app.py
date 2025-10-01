@@ -1,112 +1,64 @@
-"""Azure AI Foundry Chatbot - Main Streamlit Application."""
+"""Ultra simple chat - refactored with event stream architecture."""
 
-import asyncio
-import time
-import logging
 import streamlit as st
-
-# Import our custom modules
-from src.config import get_config, setup_environment_variables, get_auth_config, get_mcp_config
-from src.auth import initialize_msal_auth
-from src.ai_client import AzureAIClient, handle_chat, get_or_create_thread
+import logging
+from src.config import get_config, get_mcp_config, setup_environment_variables, get_auth_config
+from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY
 from src.mcp_client import get_mcp_token_sync, display_mcp_status
-from src.ui import (
-    render_header, render_messages, render_annotations, 
-    render_error_message
-)
-from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY, USER_ROLE, ASSISTANT_ROLE
-from azure.identity import DefaultAzureCredential
+from src.auth import initialize_msal_auth
+from src.agent_manager import AgentManager
+from src.run_processor import RunProcessor
+from src.event_renderer import EventRenderer, render_approval_buttons
+from src.run_events import RequiresApprovalEvent
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def on_tool_approve(event: RequiresApprovalEvent, agent_manager: AgentManager):
+    """Handle tool approval."""
+    if agent_manager.submit_approvals(event, approved=True):
+        # Unblock processor and continue
+        if 'processor' in st.session_state and st.session_state.processor:
+            st.session_state.processor.unblock()
+        st.session_state.pending_approval = None
+        st.session_state.stage = 'processing'
+        st.rerun()
 
-def initialize_session_state(config: dict, mcp_config: dict = None) -> None:
-    """Initialize Streamlit session state.
-    
-    Args:
-        config: Configuration dictionary
-        mcp_config: MCP configuration dictionary (optional)
-    """
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-        
-    if "thread_id" not in st.session_state:
-        st.session_state.thread_id = None
-        
-    if "agent_id" not in st.session_state:
-        st.session_state.agent_id = config[AGENT_ID_KEY]
-    
-    # Initialize MCP token if configuration is available
-    if mcp_config and "mcp_token" not in st.session_state:
-        logger.info("Getting MCP token...")
-        st.session_state.mcp_token = get_mcp_token_sync(mcp_config)
-        if st.session_state.mcp_token:
-            logger.info("MCP token obtained successfully")
+
+def on_tool_deny(event: RequiresApprovalEvent, agent_manager: AgentManager):
+    """Handle tool denial."""
+    if agent_manager.submit_approvals(event, approved=False):
+        # Denied - stop processing
+        st.session_state.pending_approval = None
+        st.session_state.processor = None
+        st.session_state.stage = 'user_input'
+        st.rerun()
+
+def render_message_history():
+    """Render message history from session state."""
+    for item in st.session_state.messages:
+        if isinstance(item, dict):
+            # User message - simple dict
+            with st.chat_message(item["role"]):
+                st.markdown(item["content"])
         else:
-            logger.warning("Failed to obtain MCP token")
+            # Assistant event - RunEvent object
+            with st.chat_message("assistant"):
+                EventRenderer.render(item)
 
 
-async def process_chat_message(
-    config: dict, 
-    token_credential, 
-    prompt: str,
-    mcp_config: dict = None,
-    on_stream_chunk: callable = None,
-    on_tool_status: callable = None
-) -> tuple[str, list]:
-    """Process a chat message and return response.
-    
-    Args:
-        config: Configuration dictionary
-        token_credential: Azure authentication credential
-        prompt: User's message
-        mcp_config: MCP configuration dictionary (optional)
-        on_stream_chunk: Optional callback for streaming chunks
-        
-    Returns:
-        Tuple of (response_content, annotations)
+def initialize_app() -> AgentManager:
     """
-    # Initialize AI client
-    async with AzureAIClient(config[PROJ_ENDPOINT_KEY], token_credential) as ai_project:
-        agent_client = ai_project.agents
-        
-        # Get or create thread
-        thread_id = await get_or_create_thread(
-            agent_client, 
-            st.session_state.thread_id, 
-            config[AGENT_ID_KEY]
-        )
-        
-        # Update session state
-        if st.session_state.thread_id != thread_id:
-            st.session_state.thread_id = thread_id
-            st.session_state.agent_id = config[AGENT_ID_KEY]
-        
-        # Handle chat with MCP token if available
-        mcp_token = getattr(st.session_state, 'mcp_token', None)
-        response_content, annotations = await handle_chat(
-            ai_project, config[AGENT_ID_KEY], thread_id, prompt, mcp_token, mcp_config, on_stream_chunk, on_tool_status
-        )
-        
-        return response_content, annotations
-
-
-def main() -> None:
-    """Main application function."""
-    # Render header
-    render_header()
-    
+    Initialize application: config, auth, MCP, agent manager, session state.
+    Returns AgentManager instance.
+    """
     # Get configuration
     config = get_config()
     if not config:
+        st.error("❌ Please configure your Azure AI Foundry settings in Streamlit secrets.")
         st.stop()
     
-    # Get MCP configuration
-    mcp_config = get_mcp_config()
-    
-    # Setup environment variables
+    # Setup environment
     setup_environment_variables()
     
     # Get authentication configuration
@@ -114,79 +66,125 @@ def main() -> None:
     if not client_id or not tenant_id:
         st.stop()
     
-    # Initialize MSAL authentication
+    # Initialize MSAL authentication in sidebar
     with st.sidebar:
         token_credential = initialize_msal_auth(client_id, tenant_id)
-
+    
     # Check if user is authenticated
     if not token_credential:
         st.error("❌ Please sign in to use the chatbot.")
         st.stop()
     
-    # Initialize session state
-    initialize_session_state(config, mcp_config)
+    # Get MCP configuration and token
+    mcp_config = get_mcp_config()
+    mcp_token = get_mcp_token_sync(mcp_config)
     
-    # Display MCP status if configured
+    # Display MCP status in sidebar
     if mcp_config:
-        mcp_token = getattr(st.session_state, 'mcp_token', None)
-        display_mcp_status(mcp_config, mcp_token)
+        with st.sidebar:
+            display_mcp_status(mcp_config, mcp_token)
     
-    # Display existing messages
-    render_messages(st.session_state.messages)
+    # Initialize agent manager
+    agent_manager = AgentManager(
+        project_endpoint=config[PROJ_ENDPOINT_KEY],
+        agent_id=config[AGENT_ID_KEY],
+        mcp_config=mcp_config,
+        mcp_token=mcp_token
+    )
     
-    # Chat input
-    if prompt := st.chat_input("What is up?"):
-        # Add user message
-        st.session_state.messages.append({"role": USER_ROLE, "content": prompt})
-        with st.chat_message(USER_ROLE):
-            st.markdown(prompt)
+    # Initialize session state
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = None
+    if "processor" not in st.session_state:
+        st.session_state.processor = None
+    if 'stage' not in st.session_state:
+        st.session_state.stage = 'user_input'
+    if 'run_id' not in st.session_state:
+        st.session_state.run_id = None
+    if 'pending_approval' not in st.session_state:
+        st.session_state.pending_approval = None
+    
+    # Create thread if needed
+    if not st.session_state.thread_id:
+        st.session_state.thread_id = agent_manager.create_thread()
+    
+    return agent_manager
 
-        # Generate response
-        with st.chat_message(ASSISTANT_ROLE):
-            try:
-                
-                # Accumulate chunks
-                chunks = []
-                
-                # Define streaming callback
-                def on_chunk(chunk: str):
-                    chunks.append(chunk)
-                
-                # Define tool status callback
-                def on_tool_status(status: str):
-                    st.info(status)
-                
-                # Process chat message with streaming
-                response_content, annotations = asyncio.run(
-                    process_chat_message(config, DefaultAzureCredential(), prompt, mcp_config, on_chunk, on_tool_status)
-                )
-                
-                # Stream all chunks with typewriter effect
-                def stream_generator():
-                    for word in response_content.split(" "):
-                        yield word + " "
-                        time.sleep(0.02)
-                
-                st.write_stream(stream_generator)
-                
-                # Display annotations
-                render_annotations(annotations)
-                
-                # Store response
-                st.session_state.messages.append({
-                    "role": ASSISTANT_ROLE,
-                    "content": response_content,
-                    "annotations": annotations
-                })
-                
 
+def main():
+    st.title("🤖 Ultra Simple Chat")
+    
+    # Initialize app (config, auth, MCP, agent manager, session state, thread)
+    agent_manager = initialize_app()
+    
+    # Display message history
+    render_message_history()
+    
+    # Handle pending approval (blocking state)
+    if st.session_state.pending_approval:
+        event = st.session_state.pending_approval
+        with st.chat_message("assistant"):
+            EventRenderer.render_approval_request(event)
+            render_approval_buttons(event, 
+                                   lambda e: on_tool_approve(e, agent_manager),
+                                   lambda e: on_tool_deny(e, agent_manager))
+        return
+    
+    # Handle user input
+    if st.session_state.stage == 'user_input':
+        if prompt := st.chat_input("Say something:"):
+            # User message - simple dict (not an event)
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            # Create run and new processor
+            run_id = agent_manager.create_run(st.session_state.thread_id, prompt)
+            st.session_state.run_id = run_id
+            st.session_state.processor = RunProcessor(agent_manager.agents_client)
+            st.session_state.stage = 'processing'
+            st.rerun()
+    
+    # Process run events
+    if st.session_state.stage == 'processing' and st.session_state.run_id:
+        processor = st.session_state.processor
+        
+        if not processor:
+            logger.error("No processor in session state!")
+            st.error("Error: No processor found")
+            st.session_state.stage = 'user_input'
+            return
+        
+        with st.chat_message("assistant"):
+            # Stream events using existing processor (maintains state across reruns)
+            for event in processor.poll_run_events(
+                thread_id=st.session_state.thread_id,
+                run_id=st.session_state.run_id
+            ):
+                logger.info(f"📦 Received event: {event.event_type} (id: {event.event_id})")
                 
-            except Exception as e:
-                render_error_message(str(e))
-                st.session_state.messages.append({
-                    "role": ASSISTANT_ROLE,
-                    "content": "Sorry, I encountered an error. Please try again."
-                })
+                # Handle blocking event
+                if event.is_blocking:
+                    st.session_state.pending_approval = event
+                    st.rerun()
+                    return
+                
+                # Render event and store it (not dict) in history
+                EventRenderer.render(event)
+                
+                # Store event in history (skip completion/error events)
+                if event.event_type not in ['completed', 'error']:
+                    st.session_state.messages.append(event)
+        
+        # Run completed - reset state
+        logger.info("✅ Run completed, resetting state")
+        st.session_state.stage = 'user_input'
+        st.session_state.run_id = None
+        st.session_state.processor = None
+        st.rerun()
 
 
 if __name__ == "__main__":
