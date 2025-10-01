@@ -1,13 +1,12 @@
 """Ultra simple chat - refactored with event stream architecture."""
 
 import streamlit as st
-from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
 import logging
 from src.config import get_config, get_mcp_config, setup_environment_variables
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY
 from src.mcp_client import get_mcp_token_sync
-from azure.ai.agents.models import McpTool, ToolApproval, RequiredMcpToolCall
+from src.agent_manager import AgentManager
 from src.run_processor import RunProcessor
 from src.event_renderer import EventRenderer, render_approval_buttons
 from src.run_events import RequiresApprovalEvent
@@ -15,40 +14,25 @@ from src.run_events import RequiresApprovalEvent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration and MCP setup
-
-# Get configuration
+# Configuration and initialization
 config = get_config()
 if not config:
     st.error("❌ Please configure your Azure AI Foundry settings in Streamlit secrets.")
     st.stop()
 
-project_endpoint = config[PROJ_ENDPOINT_KEY]
-agent_id = config[AGENT_ID_KEY]
-
-# Get MCP configuration
 setup_environment_variables()
 mcp_config = get_mcp_config()
-# Get server label from config
-server_label = mcp_config.get("mcp_server_label", "mcp_server")
-
 mcp_token = get_mcp_token_sync(mcp_config)
 
-# Create MCP tool with authorization header
-mcp_tool = McpTool(
-    server_label=server_label,
-    server_url="",  # URL will be set by the agent configuration
-    allowed_tools=[]  # Allow all tools
+# Initialize agent manager
+agent_manager = AgentManager(
+    project_endpoint=config[PROJ_ENDPOINT_KEY],
+    agent_id=config[AGENT_ID_KEY],
+    mcp_config=mcp_config,
+    mcp_token=mcp_token
 )
 
-# Update headers with authorization token
-mcp_tool.update_headers("authorization", f"bearer {mcp_token}")
-#mcp_tool.set_approval_mode("never")
-
-client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-agents_client = client.agents
-
-# Session state management
+# Session state initialization
 if 'stage' not in st.session_state:
     st.session_state.stage = 'user_input'
 if 'run_id' not in st.session_state:
@@ -57,46 +41,9 @@ if 'pending_approval' not in st.session_state:
     st.session_state.pending_approval = None
 
 
-def submit_tool_approvals(event: RequiresApprovalEvent, approved: bool):
-    """Submit tool approvals to Azure AI Foundry."""
-    try:
-        client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-        agents_client = client.agents
-        
-        tool_approvals = []
-        for tool_call in event.tool_calls:
-            if isinstance(tool_call, RequiredMcpToolCall):
-                try:
-                    tool_approvals.append(
-                        ToolApproval(
-                            tool_call_id=tool_call.id,
-                            approve=approved,
-                            headers=mcp_tool.headers,
-                        )
-                    )
-                except Exception as e:
-                    logger.error(f"Error creating approval for {tool_call.id}: {e}")
-        
-        if tool_approvals:
-            logger.info(f"Submitting {len(tool_approvals)} tool approvals (approved={approved})")
-            agents_client.runs.submit_tool_outputs(
-                thread_id=event.thread_id,
-                run_id=event.run_id,
-                tool_approvals=tool_approvals
-            )
-            logger.info(f"✅ Submitted tool approvals")
-            return True
-        
-        return False
-        
-    except Exception as e:
-        logger.error(f"Failed to submit tool approvals: {e}")
-        return False
-
-
 def on_tool_approve(event: RequiresApprovalEvent):
     """Handle tool approval."""
-    if submit_tool_approvals(event, approved=True):
+    if agent_manager.submit_approvals(event, approved=True):
         # Unblock processor and continue
         if 'processor' in st.session_state and st.session_state.processor:
             st.session_state.processor.unblock()
@@ -107,45 +54,12 @@ def on_tool_approve(event: RequiresApprovalEvent):
 
 def on_tool_deny(event: RequiresApprovalEvent):
     """Handle tool denial."""
-    if submit_tool_approvals(event, approved=False):
+    if agent_manager.submit_approvals(event, approved=False):
         # Denied - stop processing
         st.session_state.pending_approval = None
         st.session_state.processor = None
         st.session_state.stage = 'user_input'
         st.rerun()
-
-def create_run(thread_id: str, message: str) -> str:
-    """Create a run and return run_id."""
-    client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-    agents_client = client.agents
-    
-    # Create user message
-    agents_client.messages.create(thread_id=thread_id, role="user", content=message)
-    
-    # Get tool resources if MCP is available
-    tool_resources = []
-    if mcp_config and mcp_token:
-        try:
-            tool_resources = mcp_tool.resources
-            logger.info(f"MCP tool initialized with {len(tool_resources)} resources")
-        except Exception as e:
-            logger.error(f"Failed to initialize MCP tool: {e}")
-    
-    # Create run with MCP headers
-    headers = {}
-    if mcp_token:
-        headers["Authorization"] = f"Bearer {mcp_token}"
-    
-    run = agents_client.runs.create(
-        thread_id=thread_id,
-        agent_id=agent_id,
-        instructions="You are a helpful assistant, you will respond to the user's message and you will use the tools provided to you to help the user. You will justify what tools you are going to use before requesting them.",
-        headers=headers,
-        tool_resources=tool_resources
-    )
-    
-    logger.info(f"✅ Created run: {run.id}")
-    return run.id
 
 def render_message_history():
     """Render message history from session state."""
@@ -173,10 +87,7 @@ def main():
     
     # Create thread if needed
     if not st.session_state.thread_id:
-        client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-        thread = client.agents.threads.create()
-        st.session_state.thread_id = thread.id
-        logger.info(f"✅ Created thread: {thread.id}")
+        st.session_state.thread_id = agent_manager.create_thread()
     
     # Display message history
     render_message_history()
@@ -199,9 +110,9 @@ def main():
                 st.markdown(prompt)
             
             # Create run and new processor
-            run_id = create_run(st.session_state.thread_id, prompt)
+            run_id = agent_manager.create_run(st.session_state.thread_id, prompt)
             st.session_state.run_id = run_id
-            st.session_state.processor = RunProcessor(agents_client)
+            st.session_state.processor = RunProcessor(agent_manager.agents_client)
             st.session_state.stage = 'processing'
             st.rerun()
     
