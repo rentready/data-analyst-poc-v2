@@ -1,11 +1,11 @@
 """Ultra simple chat - refactored with event stream architecture."""
 
 import streamlit as st
-from azure.identity import DefaultAzureCredential
 import logging
-from src.config import get_config, get_mcp_config, setup_environment_variables
+from src.config import get_config, get_mcp_config, setup_environment_variables, get_auth_config
 from src.constants import PROJ_ENDPOINT_KEY, AGENT_ID_KEY
-from src.mcp_client import get_mcp_token_sync
+from src.mcp_client import get_mcp_token_sync, display_mcp_status
+from src.auth import initialize_msal_auth
 from src.agent_manager import AgentManager
 from src.run_processor import RunProcessor
 from src.event_renderer import EventRenderer, render_approval_buttons
@@ -14,34 +14,7 @@ from src.run_events import RequiresApprovalEvent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration and initialization
-config = get_config()
-if not config:
-    st.error("❌ Please configure your Azure AI Foundry settings in Streamlit secrets.")
-    st.stop()
-
-setup_environment_variables()
-mcp_config = get_mcp_config()
-mcp_token = get_mcp_token_sync(mcp_config)
-
-# Initialize agent manager
-agent_manager = AgentManager(
-    project_endpoint=config[PROJ_ENDPOINT_KEY],
-    agent_id=config[AGENT_ID_KEY],
-    mcp_config=mcp_config,
-    mcp_token=mcp_token
-)
-
-# Session state initialization
-if 'stage' not in st.session_state:
-    st.session_state.stage = 'user_input'
-if 'run_id' not in st.session_state:
-    st.session_state.run_id = None
-if 'pending_approval' not in st.session_state:
-    st.session_state.pending_approval = None
-
-
-def on_tool_approve(event: RequiresApprovalEvent):
+def on_tool_approve(event: RequiresApprovalEvent, agent_manager: AgentManager):
     """Handle tool approval."""
     if agent_manager.submit_approvals(event, approved=True):
         # Unblock processor and continue
@@ -52,7 +25,7 @@ def on_tool_approve(event: RequiresApprovalEvent):
         st.rerun()
 
 
-def on_tool_deny(event: RequiresApprovalEvent):
+def on_tool_deny(event: RequiresApprovalEvent, agent_manager: AgentManager):
     """Handle tool denial."""
     if agent_manager.submit_approvals(event, approved=False):
         # Denied - stop processing
@@ -77,6 +50,46 @@ def render_message_history():
 def main():
     st.title("🤖 Ultra Simple Chat")
     
+    # Get configuration
+    config = get_config()
+    if not config:
+        st.error("❌ Please configure your Azure AI Foundry settings in Streamlit secrets.")
+        st.stop()
+    
+    # Setup environment
+    setup_environment_variables()
+    
+    # Get authentication configuration
+    client_id, tenant_id, _ = get_auth_config()
+    if not client_id or not tenant_id:
+        st.stop()
+    
+    # Initialize MSAL authentication in sidebar
+    with st.sidebar:
+        token_credential = initialize_msal_auth(client_id, tenant_id)
+    
+    # Check if user is authenticated
+    if not token_credential:
+        st.error("❌ Please sign in to use the chatbot.")
+        st.stop()
+    
+    # Get MCP configuration and token
+    mcp_config = get_mcp_config()
+    mcp_token = get_mcp_token_sync(mcp_config)
+    
+    # Display MCP status in sidebar
+    if mcp_config:
+        with st.sidebar:
+            display_mcp_status(mcp_config, mcp_token)
+    
+    # Initialize agent manager
+    agent_manager = AgentManager(
+        project_endpoint=config[PROJ_ENDPOINT_KEY],
+        agent_id=config[AGENT_ID_KEY],
+        mcp_config=mcp_config,
+        mcp_token=mcp_token
+    )
+    
     # Initialize session state
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -84,6 +97,12 @@ def main():
         st.session_state.thread_id = None
     if "processor" not in st.session_state:
         st.session_state.processor = None
+    if 'stage' not in st.session_state:
+        st.session_state.stage = 'user_input'
+    if 'run_id' not in st.session_state:
+        st.session_state.run_id = None
+    if 'pending_approval' not in st.session_state:
+        st.session_state.pending_approval = None
     
     # Create thread if needed
     if not st.session_state.thread_id:
@@ -97,7 +116,9 @@ def main():
         event = st.session_state.pending_approval
         with st.chat_message("assistant"):
             EventRenderer.render_approval_request(event)
-            render_approval_buttons(event, on_tool_approve, on_tool_deny)
+            render_approval_buttons(event, 
+                                   lambda e: on_tool_approve(e, agent_manager),
+                                   lambda e: on_tool_deny(e, agent_manager))
         return
     
     # Handle user input
