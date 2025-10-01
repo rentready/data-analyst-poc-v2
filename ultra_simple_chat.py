@@ -60,6 +60,7 @@ def show_step_result(step):
         
     if step_type == "tool_calls":
         show_tool_calls_step(step)
+        st.session_state.messages.append({"role": "assistant", "tool_calls_step": step})
     elif step_type == "message_creation":
         show_message_creation_step(step)
     else:
@@ -80,7 +81,6 @@ def show_tool_calls_step(step):
             output = tool_call.get('output', '')
             
             with st.status(f"🔧 {tool_name} ({tool_type})"):
-                st.subheader(f"🔧 {tool_name} ({tool_type})")
                 
                 # Show arguments
                 if arguments:
@@ -263,7 +263,7 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str):
             try:
                 # Try different API endpoints for getting steps
                 client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-                steps = client.agents.run_steps.list(thread_id=thread_id, run_id=run_id)
+                steps = client.agents.run_steps.list(thread_id=thread_id, run_id=run_id, order="asc")
                 logger.info(f"Steps: {steps}")
                 for step in steps:
                     step_type = getattr(step, 'type', 'unknown')
@@ -435,8 +435,8 @@ def main():
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             logger.info(f"Message: {msg}")
-            if "tool_name" in msg:
-                show_tool_result(msg["tool_name"], msg["content"])
+            if "tool_calls_step" in msg:
+                show_tool_calls_step(msg["tool_calls_step"])
             else:
                 st.write(msg["content"])
 
