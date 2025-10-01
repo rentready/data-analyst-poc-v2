@@ -22,7 +22,6 @@ def on_tool_approve(event: RequiresApprovalEvent, agent_manager: AgentManager):
             st.session_state.processor.unblock()
         st.session_state.pending_approval = None
         st.session_state.stage = 'processing'
-        st.rerun()
 
 
 def on_tool_deny(event: RequiresApprovalEvent, agent_manager: AgentManager):
@@ -32,7 +31,6 @@ def on_tool_deny(event: RequiresApprovalEvent, agent_manager: AgentManager):
         st.session_state.pending_approval = None
         st.session_state.processor = None
         st.session_state.stage = 'user_input'
-        st.rerun()
 
 def render_message_history():
     """Render message history from session state."""
@@ -141,12 +139,13 @@ def main():
             with st.chat_message("user"):
                 st.markdown(prompt)
             
-            # Create run and new processor
-            run_id = agent_manager.create_run(st.session_state.thread_id, prompt)
-            st.session_state.run_id = run_id
-            st.session_state.processor = RunProcessor(agent_manager.agents_client)
-            st.session_state.stage = 'processing'
-            st.rerun()
+            with st.spinner("Thinking...", show_time=True):
+                # Create run and new processor
+                run_id = agent_manager.create_run(st.session_state.thread_id, prompt)
+                st.session_state.run_id = run_id
+                st.session_state.processor = RunProcessor(agent_manager.agents_client)
+                st.session_state.stage = 'processing'
+                st.rerun()
     
     # Process run events
     if st.session_state.stage == 'processing' and st.session_state.run_id:
