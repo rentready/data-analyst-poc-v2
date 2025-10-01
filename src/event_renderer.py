@@ -39,44 +39,36 @@ class EventRenderer:
     """Renders run events to Streamlit UI."""
     
     @staticmethod
-    def render(event: RunEvent) -> Optional[dict]:
-        """
-        Render event to UI and return message dict for history.
-        Returns None if event should not be stored in history.
-        """
+    def render(event: RunEvent):
+        """Render event to UI."""
         if isinstance(event, MessageEvent):
-            return EventRenderer.render_message(event)
+            EventRenderer.render_message(event)
         
         elif isinstance(event, ToolCallsStepEvent):
-            return EventRenderer.render_tool_calls_step(event)
+            EventRenderer.render_tool_calls_step(event)
         
         elif isinstance(event, RequiresApprovalEvent):
-            return EventRenderer.render_approval_request(event)
+            EventRenderer.render_approval_request(event)
         
         elif isinstance(event, RunCompletedEvent):
-            return EventRenderer.render_completion(event)
+            EventRenderer.render_completion(event)
         
         elif isinstance(event, ErrorEvent):
-            return EventRenderer.render_error(event)
+            EventRenderer.render_error(event)
         
         else:
             logger.warning(f"Unknown event type: {type(event)}")
-            return None
     
     @staticmethod
-    def render_message(event: MessageEvent) -> dict:
+    def render_message(event: MessageEvent):
         """Render assistant message."""
         st.markdown(event.content)
-        return {"role": "assistant", "content": event.content}
     
     @staticmethod
-    def render_tool_calls_step(event: ToolCallsStepEvent) -> dict:
+    def render_tool_calls_step(event: ToolCallsStepEvent):
         """Render tool calls step with all tool calls."""
         for tool_call in event.tool_calls:
             EventRenderer._render_single_tool_call(tool_call)
-        
-        # Store in history
-        return {"role": "assistant", "tool_calls_step": event}
     
     @staticmethod
     def _render_single_tool_call(tool_call: ToolCallEvent):
@@ -133,8 +125,8 @@ class EventRenderer:
                 st.markdown(str(result))
     
     @staticmethod
-    def render_approval_request(event: RequiresApprovalEvent) -> None:
-        """Render tool approval UI - does NOT store in history."""
+    def render_approval_request(event: RequiresApprovalEvent):
+        """Render tool approval UI."""
         st.warning("🔧 MCP Tool requires approval")
         
         for i, tool_call in enumerate(event.tool_calls):
@@ -146,23 +138,18 @@ class EventRenderer:
                 if tool_call.arguments:
                     st.write("**Arguments:**")
                     st.json(tool_call.arguments)
-        
-        # Note: Approval buttons handled separately in main app
-        return None  # Don't store approval requests in history
     
     @staticmethod
-    def render_completion(event: RunCompletedEvent) -> None:
+    def render_completion(event: RunCompletedEvent):
         """Render run completion - just logging."""
         logger.info(f"✅ Run {event.run_id} completed")
-        return None
     
     @staticmethod
-    def render_error(event: ErrorEvent) -> None:
+    def render_error(event: ErrorEvent):
         """Render error event."""
         st.error(f"❌ Error: {event.error_message}")
         if event.error_code:
             st.caption(f"Error code: {event.error_code}")
-        return None
 
 
 def render_approval_buttons(event: RequiresApprovalEvent, 

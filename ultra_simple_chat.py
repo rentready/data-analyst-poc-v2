@@ -149,14 +149,15 @@ def create_run(thread_id: str, message: str) -> str:
 
 def render_message_history():
     """Render message history from session state."""
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            if "tool_calls_step" in msg:
-                # Render stored tool calls step event
-                event = msg["tool_calls_step"]
-                EventRenderer.render_tool_calls_step(event)
-            else:
-                st.markdown(msg["content"])
+    for item in st.session_state.messages:
+        if isinstance(item, dict):
+            # User message - simple dict
+            with st.chat_message(item["role"]):
+                st.markdown(item["content"])
+        else:
+            # Assistant event - RunEvent object
+            with st.chat_message("assistant"):
+                EventRenderer.render(item)
 
 
 def main():
@@ -191,15 +192,16 @@ def main():
     # Handle user input
     if st.session_state.stage == 'user_input':
         if prompt := st.chat_input("Say something:"):
-            # Add user message
+            # User message - simple dict (not an event)
             st.session_state.messages.append({"role": "user", "content": prompt})
+            
             with st.chat_message("user"):
                 st.markdown(prompt)
             
             # Create run and new processor
             run_id = create_run(st.session_state.thread_id, prompt)
             st.session_state.run_id = run_id
-            st.session_state.processor = RunProcessor(agents_client)  # New processor for new run
+            st.session_state.processor = RunProcessor(agents_client)
             st.session_state.stage = 'processing'
             st.rerun()
     
@@ -227,10 +229,12 @@ def main():
                     st.rerun()
                     return
                 
-                # Render event and store in history
-                msg_dict = EventRenderer.render(event)
-                if msg_dict:
-                    st.session_state.messages.append(msg_dict)
+                # Render event and store it (not dict) in history
+                EventRenderer.render(event)
+                
+                # Store event in history (skip completion/error events)
+                if event.event_type not in ['completed', 'error']:
+                    st.session_state.messages.append(event)
         
         # Run completed - reset state
         logger.info("✅ Run completed, resetting state")
