@@ -9,7 +9,7 @@ from src.auth import initialize_msal_auth
 from src.agent_manager import AgentManager
 from src.run_processor import RunProcessor
 from src.event_renderer import EventRenderer, render_approval_buttons
-from src.run_events import RequiresApprovalEvent
+from src.run_events import RequiresApprovalEvent, MessageEvent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -171,8 +171,7 @@ def main():
                     st.rerun()
                     return
                 
-                # Render event and store it (not dict) in history
-                EventRenderer.render(event)
+                EventRenderer.render_message_with_typing(event)
                 
                 # Store event in history (skip completion/error events)
                 if event.event_type not in ['completed', 'error']:

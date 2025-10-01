@@ -3,6 +3,7 @@
 import streamlit as st
 import json
 import logging
+import time
 from typing import Optional, Callable
 from .run_events import (
     RunEvent, MessageEvent, ToolCallEvent, ToolCallsStepEvent,
@@ -61,7 +62,26 @@ class EventRenderer:
     
     @staticmethod
     def render_message(event: MessageEvent):
-        """Render assistant message."""
+        """Render assistant message (plain, for history)."""
+        st.markdown(event.content)
+    
+    @staticmethod
+    def render_message_with_typing(event: MessageEvent):
+        """Render assistant message with typewriter effect (for new messages)."""
+
+        if not isinstance(event, MessageEvent):
+            return
+        
+        placeholder = st.empty()
+        displayed_text = ""
+        
+        for char in event.content:
+            displayed_text += char
+            placeholder.markdown(displayed_text + "▌")  # Add cursor
+            time.sleep(0.005)
+        
+        # Clear placeholder and render final text normally
+        placeholder.empty()
         st.markdown(event.content)
     
     @staticmethod
