@@ -47,9 +47,11 @@ def render_message_history():
                 EventRenderer.render(item)
 
 
-def main():
-    st.title("🤖 Ultra Simple Chat")
-    
+def initialize_app() -> AgentManager:
+    """
+    Initialize application: config, auth, MCP, agent manager, session state.
+    Returns AgentManager instance.
+    """
     # Get configuration
     config = get_config()
     if not config:
@@ -107,6 +109,15 @@ def main():
     # Create thread if needed
     if not st.session_state.thread_id:
         st.session_state.thread_id = agent_manager.create_thread()
+    
+    return agent_manager
+
+
+def main():
+    st.title("🤖 Ultra Simple Chat")
+    
+    # Initialize app (config, auth, MCP, agent manager, session state, thread)
+    agent_manager = initialize_app()
     
     # Display message history
     render_message_history()
