@@ -6,11 +6,32 @@ A Streamlit application demonstrating how to build a chatbot using Azure AI Foun
 
 - Powered by Azure AI Foundry Agent
 - Azure AD authentication (MSAL)
-- Model Context Protocol (MCP) integration
-- Real-time streaming responses with typewriter effect
-- Source annotations and citations
-- Async/await architecture
+- Model Context Protocol (MCP) integration with **tool approval workflow**
+- Real-time event processing (messages, tool calls, approvals)
+- Polling-based architecture for reliability
+- Clean event-driven design with proper sequencing
 - Configurable via Streamlit secrets
+
+## Design Decisions
+
+### Polling-based Architecture
+
+This application uses a **polling mechanism** instead of real-time streaming for the following reasons:
+
+1. **Stream Limitations**: Azure AI Foundry's streaming API has a critical limitation - when the stream stops (e.g., for tool approval), it cannot be resumed. This makes it unsuitable for interactive tool approval workflows.
+
+2. **MCP Tool Approval**: The application demonstrates the full **MCP tool approval workflow**, which requires:
+   - Agent requests permission to execute a tool
+   - User approves/denies the request
+   - Execution continues after approval
+   
+   Real-time streaming cannot handle this pause-and-resume pattern.
+
+3. **Platform Issues**: At the time of development, issues with Azure Search integration and MCP streaming were reported, making polling a more reliable approach.
+
+4. **Reliability**: Polling provides a robust, predictable event flow that works consistently across all scenarios including tool approvals, multiple tool calls, and error handling.
+
+The polling implementation still provides real-time user experience while maintaining reliability and supporting the full tool approval workflow.
 
 ## Prerequisites
 
