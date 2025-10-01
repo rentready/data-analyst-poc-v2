@@ -1,15 +1,16 @@
 # 🤖 Azure AI Foundry Agent Chatbot
 
-A Streamlit app that demonstrates how to build a chatbot using Azure AI Foundry Agent with support for Model Context Protocol (MCP).
+A Streamlit application demonstrating how to build a chatbot using Azure AI Foundry Agent with full Model Context Protocol (MCP) support.
 
 ## Features
 
 - Powered by Azure AI Foundry Agent
-- Support for both API key and Azure AD authentication
-- Configurable via Streamlit secrets
-- MCP token management and integration
-- Real-time streaming responses
+- Azure AD authentication (MSAL)
+- Model Context Protocol (MCP) integration
+- Real-time streaming responses with typewriter effect
 - Source annotations and citations
+- Async/await architecture
+- Configurable via Streamlit secrets
 
 ## Prerequisites
 
