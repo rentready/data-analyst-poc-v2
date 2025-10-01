@@ -56,17 +56,17 @@ def show_step_result(step):
     
     emoji = status_emoji.get(step_status, '❓')
     
-    with st.status(f"{emoji} {step_type.title()} - {step_status.title()}", expanded=True):
+    #with st.status(f"{emoji} {step_type.title()} - {step_status.title()}", expanded=True):
         
-        if step_type == "tool_calls":
-            show_tool_calls_step(step)
-        elif step_type == "message_creation":
-            show_message_creation_step(step)
-        else:
-            st.info(f"Unknown step type: {step_type}")
-            st.json(step.as_dict() if hasattr(step, 'as_dict') else str(step))
+    if step_type == "tool_calls":
+        show_tool_calls_step(step)
+    elif step_type == "message_creation":
+        show_message_creation_step(step)
+    else:
+        st.info(f"Unknown step type: {step_type}")
+        st.json(step.as_dict() if hasattr(step, 'as_dict') else str(step))
     
-    st.divider()
+    #st.divider()
 
 def show_tool_calls_step(step):
     """Show tool calls step details."""
@@ -79,32 +79,28 @@ def show_tool_calls_step(step):
             arguments = tool_call.get('arguments', '')
             output = tool_call.get('output', '')
             
-            st.subheader(f"🔧 {tool_name} ({tool_type})")
-            
-            # Show arguments
-            if arguments:
-                with st.expander("📝 Arguments"):
-                    try:
-                        args_json = json.loads(arguments)
-                        st.json(args_json)
-                    except:
-                        st.code(arguments)
-            
-            # Show output/result
-            if output:
-                result = parse_tool_result(output)
-                if result:
-                    show_structured_result(result)
+            with st.status(f"🔧 {tool_name} ({tool_type})"):
+                st.subheader(f"🔧 {tool_name} ({tool_type})")
+                
+                # Show arguments
+                if arguments:
+                    with st.expander("📝 Arguments"):
+                        try:
+                            args_json = json.loads(arguments)
+                            st.json(args_json)
+                        except:
+                            st.code(arguments)
+                
+                # Show output/result
+                if output:
+                    result = parse_tool_result(output)
+                    if result:
+                        show_structured_result(result)
+                    else:
+                        with st.expander("📤 Output"):
+                            st.text(output)
                 else:
-                    with st.expander("📤 Output"):
-                        st.text(output)
-            else:
-                st.info("⏳ Tool is executing...")
-    
-    # Show usage if available
-    usage = getattr(step, 'usage', None)
-    if usage:
-        st.info(f"📊 Usage: {usage}")
+                    st.info("⏳ Tool is executing...")
 
 def show_message_creation_step(step):
     """Show message creation step details."""
@@ -112,12 +108,19 @@ def show_message_creation_step(step):
     
     if 'message_creation' in step_details:
         message_id = step_details['message_creation'].get('message_id', 'Unknown')
-        st.info(f"💬 Creating message: {message_id}")
-    
-    # Show usage if available
-    usage = getattr(step, 'usage', None)
-    if usage:
-        st.info(f"📊 Usage: {usage}")
+        try:
+            message_content = get_message_by_id(agents_client, st.session_state.thread_id, message_id)
+            if message_content and message_content != "No content":
+                logger.info(f"  Message content: {message_content[:200]}...")
+                
+                # Check if message already shown to avoid duplicates
+                if not any(msg.get("content") == message_content for msg in st.session_state.messages):
+                    # Show message to user immediately
+                    st.write(message_content)
+                    st.session_state.messages.append({"role": "assistant", "content": message_content})
+                    # Mark step as shown
+        except Exception as e:
+            logger.error(f"Error getting message content: {e}")
 
 def show_structured_result(result):
     """Show structured result data in a simple format."""
@@ -164,6 +167,9 @@ mcp_tool = McpTool(
 # Update headers with authorization token
 mcp_tool.update_headers("authorization", f"bearer {mcp_token}")
 #mcp_tool.set_approval_mode("never")
+
+client = AIProjectClient(project_endpoint, DefaultAzureCredential())
+agents_client = client.agents
 
 if 'stage' not in st.session_state:
     st.session_state.stage = 'user_input'
@@ -275,50 +281,19 @@ def poll_run_until_completion(agents_client, thread_id: str, run_id: str):
                         step_details = step.step_details
                         logger.info(f"  Step details: {step_details}")
                         
-                        if step_type == "tool_calls" and 'tool_calls' in step_details:
-                            for tool_call in step_details['tool_calls']:
-                                tool_name = tool_call.get('name', 'unknown')
-                                tool_type = tool_call.get('type', 'unknown')
-                                arguments = tool_call.get('arguments', '')
-                                output = tool_call.get('output', '')
-                                
-                                logger.info(f"  Tool call: {tool_name} ({tool_type})")
-                                if arguments:
-                                    logger.info(f"    Arguments: {arguments}")
-                                if output:
-                                    logger.info(f"    Output: {output}")
-                        
-                        elif step_type == "message_creation" and 'message_creation' in step_details:
+                        if step_type == "message_creation" and 'message_creation' in step_details:
                             message_id = step_details['message_creation'].get('message_id', 'unknown')
                             logger.info(f"  Message creation: {message_id}")
                             logger.info(f"  Step details: {step_details}")
                             
                             # Get and display message content immediately if completed or in progress
-                            if step_status in ["completed", "in_progress"]:
-                                try:
-                                    message_content = get_message_by_id(agents_client, thread_id, message_id)
-                                    if message_content and message_content != "No content":
-                                        logger.info(f"  Message content: {message_content[:200]}...")
-                                        
-                                        # Check if message already shown to avoid duplicates
-                                        if not any(msg.get("content") == message_content for msg in st.session_state.messages):
-                                            # Show message to user immediately
-                                            st.write(message_content)
-                                            st.session_state.messages.append({"role": "assistant", "content": message_content})
-                                            # Mark step as shown
-                                            st.session_state.shown_steps.add(step_id)
-                                except Exception as e:
-                                    logger.error(f"Error getting message content: {e}")
+
                         
                         # Show step result in real-time
                         if step_status == "completed":
                             show_step_result(step)
                             # Mark step as shown
                             st.session_state.shown_steps.add(step_id)
-                        
-                        elif step_type == "activities" and 'activities' in step_details:
-                            activities = step_details['activities']
-                            logger.info(f"  Activities: {activities}")
                     
                     # Log usage if available
                     usage = getattr(step, 'usage', None)
@@ -464,9 +439,6 @@ def main():
                 show_tool_result(msg["tool_name"], msg["content"])
             else:
                 st.write(msg["content"])
-
-    client = AIProjectClient(project_endpoint, DefaultAzureCredential())
-    agents_client = client.agents
 
     run = None
     prompt = None
