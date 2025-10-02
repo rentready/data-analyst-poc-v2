@@ -169,7 +169,6 @@ def main():
                 st.session_state.run_id = run_id
                 st.session_state.processor = RunProcessor(agent_manager.agents_client)
                 st.session_state.stage = 'processing'
-                st.rerun()
     
     # Process run events
     if st.session_state.stage == 'processing' and st.session_state.run_id:
@@ -182,11 +181,22 @@ def main():
             return
         
         with st.chat_message("assistant"):
-            # Stream events using existing processor (maintains state across reruns)
-            for event in processor.poll_run_events(
+            event_generator = processor.poll_run_events(
                 thread_id=st.session_state.thread_id,
                 run_id=st.session_state.run_id
-            ):
+            )
+
+            events_exhausted = False
+            
+            while not events_exhausted:
+                event = None
+                with st.spinner("Thinking...", show_time=True):
+                    try:
+                        event = next(event_generator)
+                    except StopIteration as e:
+                        events_exhausted = True
+                        continue;
+                
                 logger.info(f"📦 Received event: {event.event_type} (id: {event.event_id})")
                 
                 # Handle blocking event
@@ -197,7 +207,7 @@ def main():
                 
                 EventRenderer.render_message_with_typing(event)
                 
-                # Handle error events - show retry option
+                # Handle error events
                 if isinstance(event, ErrorEvent):
                     st.session_state.error_event = event
                     st.session_state.stage = 'error'
