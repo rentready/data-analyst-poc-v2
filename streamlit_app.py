@@ -201,7 +201,7 @@ def main():
             
             while not events_exhausted:
                 event = None
-                with st.spinner("Thinking...", show_time=True):
+                with st.spinner("Processing...", show_time=True):
                     try:
                         event = next(event_generator)
                     except StopIteration as e:

@@ -89,7 +89,7 @@ class EventRenderer:
         for char in event.content:
             displayed_text += char
             placeholder.markdown(displayed_text + "▌")  # Add cursor
-            time.sleep(0.005)
+            time.sleep(0.002)
         
         # Clear placeholder and render final text normally
         placeholder.empty()
