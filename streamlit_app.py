@@ -8,7 +8,7 @@ from src.mcp_client import get_mcp_token_sync, display_mcp_status
 from src.auth import initialize_msal_auth
 from src.agent_manager import AgentManager
 from src.run_processor import RunProcessor
-from src.event_renderer import EventRenderer, render_approval_buttons, render_error_buttons
+from src.event_renderer import EventRenderer, render_error_buttons
 from src.run_events import RequiresApprovalEvent, MessageEvent, ErrorEvent
 
 logging.basicConfig(level=logging.INFO)
@@ -140,10 +140,9 @@ def main():
     if st.session_state.pending_approval:
         event = st.session_state.pending_approval
         with st.chat_message("assistant"):
-            EventRenderer.render_approval_request(event)
-            render_approval_buttons(event, 
-                                   lambda e: on_tool_approve(e, agent_manager),
-                                   lambda e: on_tool_deny(e, agent_manager))
+            EventRenderer.render_approval_request(event,
+                                                lambda e: on_tool_approve(e, agent_manager),
+                                                lambda e: on_tool_deny(e, agent_manager))
         return
     
     # Handle error state

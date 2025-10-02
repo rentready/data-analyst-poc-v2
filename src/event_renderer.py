@@ -145,8 +145,10 @@ class EventRenderer:
                 st.markdown(str(result))
     
     @staticmethod
-    def render_approval_request(event: RequiresApprovalEvent):
-        """Render tool approval UI."""
+    def render_approval_request(event: RequiresApprovalEvent, 
+                               on_approve: callable = None, 
+                               on_deny: callable = None):
+        """Render tool approval UI with buttons."""
         st.warning("🔧 MCP Tool requires approval")
         
         for i, tool_call in enumerate(event.tool_calls):
@@ -158,6 +160,10 @@ class EventRenderer:
                 if tool_call.arguments:
                     st.write("**Arguments:**")
                     st.json(tool_call.arguments)
+        
+        # Render approval buttons if callbacks provided
+        if on_approve and on_deny:
+            render_approval_buttons(event, on_approve, on_deny)
     
     @staticmethod
     def render_completion(event: RunCompletedEvent):
