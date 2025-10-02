@@ -186,7 +186,7 @@ def render_approval_buttons(event: RequiresApprovalEvent,
     
     with col1:
         st.button(
-            "✅ Approve All",
+            "✅ Approve",
             key=f"approve_{event.run_id}",
             on_click=on_approve,
             args=(event,)
@@ -194,7 +194,7 @@ def render_approval_buttons(event: RequiresApprovalEvent,
     
     with col2:
         st.button(
-            "❌ Deny All", 
+            "❌ Deny", 
             key=f"deny_{event.run_id}",
             on_click=on_deny,
             args=(event,)
