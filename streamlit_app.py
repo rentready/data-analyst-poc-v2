@@ -215,7 +215,11 @@ def main():
                     st.rerun()
                     return
                 
-                EventRenderer.render_message_with_typing(event)
+                # Render event - use typing effect for new messages only
+                if isinstance(event, MessageEvent):
+                    EventRenderer.render_message_with_typing(event)
+                else:
+                    EventRenderer.render(event)
                 
                 # Handle error events
                 if isinstance(event, ErrorEvent):
