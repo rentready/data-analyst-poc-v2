@@ -194,3 +194,22 @@ def render_approval_buttons(event: RequiresApprovalEvent,
             args=(event,)
         )
 
+
+def render_error_buttons(on_retry: Callable, on_cancel: Callable):
+    """Render error retry/cancel buttons."""
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.button(
+            "🔄 Retry",
+            key="retry_button",
+            on_click=on_retry
+        )
+    
+    with col2:
+        st.button(
+            "❌ Cancel",
+            key="cancel_button", 
+            on_click=on_cancel
+        )
+

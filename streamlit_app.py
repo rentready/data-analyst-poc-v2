@@ -8,8 +8,8 @@ from src.mcp_client import get_mcp_token_sync, display_mcp_status
 from src.auth import initialize_msal_auth
 from src.agent_manager import AgentManager
 from src.run_processor import RunProcessor
-from src.event_renderer import EventRenderer, render_approval_buttons
-from src.run_events import RequiresApprovalEvent, MessageEvent
+from src.event_renderer import EventRenderer, render_approval_buttons, render_error_buttons
+from src.run_events import RequiresApprovalEvent, MessageEvent, ErrorEvent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,6 +31,20 @@ def on_tool_deny(event: RequiresApprovalEvent, agent_manager: AgentManager):
         st.session_state.pending_approval = None
         st.session_state.processor = None
         st.session_state.stage = 'user_input'
+
+
+def on_error_retry():
+    """Handle error retry."""
+    st.session_state.stage = 'processing'
+    st.session_state.error_event = None
+
+
+def on_error_cancel():
+    """Handle error cancel."""
+    st.session_state.stage = 'user_input'
+    st.session_state.run_id = None
+    st.session_state.processor = None
+    st.session_state.error_event = None
 
 def render_message_history():
     """Render message history from session state."""
@@ -103,6 +117,8 @@ def initialize_app() -> AgentManager:
         st.session_state.run_id = None
     if 'pending_approval' not in st.session_state:
         st.session_state.pending_approval = None
+    if 'error_event' not in st.session_state:
+        st.session_state.error_event = None
     
     # Create thread if needed
     if not st.session_state.thread_id:
@@ -128,6 +144,14 @@ def main():
             render_approval_buttons(event, 
                                    lambda e: on_tool_approve(e, agent_manager),
                                    lambda e: on_tool_deny(e, agent_manager))
+        return
+    
+    # Handle error state
+    if st.session_state.stage == 'error' and 'error_event' in st.session_state:
+        error_event = st.session_state.error_event
+        with st.chat_message("assistant"):
+            EventRenderer.render_error(error_event)
+            render_error_buttons(on_error_retry, on_error_cancel)
         return
     
     # Handle user input
@@ -172,6 +196,13 @@ def main():
                     return
                 
                 EventRenderer.render_message_with_typing(event)
+                
+                # Handle error events - show retry option
+                if isinstance(event, ErrorEvent):
+                    st.session_state.error_event = event
+                    st.session_state.stage = 'error'
+                    st.rerun()
+                    return
                 
                 # Store event in history (skip completion/error events)
                 if event.event_type not in ['completed', 'error']:
