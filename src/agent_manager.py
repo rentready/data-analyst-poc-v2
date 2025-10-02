@@ -12,11 +12,12 @@ logger = logging.getLogger(__name__)
 class AgentManager:
     """Manages Azure AI Agent operations including MCP setup and approvals."""
     
-    def __init__(self, project_endpoint: str, agent_id: str, mcp_config: dict, mcp_token: str):
+    def __init__(self, project_endpoint: str, agent_id: str, mcp_config: dict, mcp_token: str, require_approval: bool = True):
         self.project_endpoint = project_endpoint
         self.agent_id = agent_id
         self.mcp_config = mcp_config
         self.mcp_token = mcp_token
+        self.require_approval = require_approval
         
         # Initialize clients
         self.client = AIProjectClient(project_endpoint, DefaultAzureCredential())
@@ -26,7 +27,7 @@ class AgentManager:
         self.mcp_tool = self._setup_mcp_tool()
     
     def _setup_mcp_tool(self) -> McpTool:
-        """Setup MCP tool with authorization."""
+        """Setup MCP tool with authorization and approval mode."""
         server_label = self.mcp_config.get("mcp_server_label", "mcp_server")
         
         mcp_tool = McpTool(
@@ -37,6 +38,13 @@ class AgentManager:
         
         # Update headers with authorization token
         mcp_tool.update_headers("authorization", f"bearer {self.mcp_token}")
+        
+        # Set approval mode based on configuration
+        if not self.require_approval:
+            mcp_tool.set_approval_mode("never")
+            logger.info("🔓 MCP tool approval mode set to 'never' - no approval required")
+        else:
+            logger.info("🔒 MCP tool approval mode set to 'always' - approval required")
         
         return mcp_tool
     

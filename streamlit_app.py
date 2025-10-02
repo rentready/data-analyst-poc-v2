@@ -92,16 +92,27 @@ def initialize_app() -> AgentManager:
     mcp_token = get_mcp_token_sync(mcp_config)
     
     # Display MCP status in sidebar
+    # Get approval setting (default to True)
+    require_approval = True
+    
     if mcp_config:
         with st.sidebar:
             display_mcp_status(mcp_config, mcp_token)
+            # Add approval setting inside MCP section
+            st.divider()
+            require_approval = st.checkbox(
+                "Require tool approval", 
+                value=True,
+                help="When enabled, you'll need to approve each tool call before execution"
+            )
     
     # Initialize agent manager
     agent_manager = AgentManager(
         project_endpoint=config[PROJ_ENDPOINT_KEY],
         agent_id=config[AGENT_ID_KEY],
         mcp_config=mcp_config,
-        mcp_token=mcp_token
+        mcp_token=mcp_token,
+        require_approval=require_approval
     )
     
     # Initialize session state

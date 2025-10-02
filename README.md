@@ -7,6 +7,7 @@ A Streamlit application demonstrating how to build a chatbot using Azure AI Foun
 - Powered by Azure AI Foundry Agent
 - Azure AD authentication (MSAL)
 - Model Context Protocol (MCP) integration with **tool approval workflow**
+- **Configurable tool approval** - enable/disable approval requirements
 - Real-time event processing (messages, tool calls, approvals)
 - Polling-based architecture for reliability
 - Clean event-driven design with proper sequencing
@@ -102,6 +103,23 @@ When you have a valid MCP token, the app will:
 1. Automatically inject the token into every agent run using the `McpTool` class
 2. Display the token status and configuration in the UI
 3. Enable the agent to use MCP tools with proper authentication
+
+## Tool Approval Settings
+
+The application includes a **configurable tool approval system** that allows you to control whether tool calls require manual approval:
+
+### Approval Modes
+
+- **🔒 Approval Required (Default)**: Each tool call requires explicit user approval before execution
+- **🔓 No Approval**: Tool calls are executed automatically without user intervention
+
+### Configuration
+
+You can toggle the approval mode using the sidebar checkbox:
+- **"Require tool approval"** - Check this to require approval for each tool call
+- **Uncheck** to allow automatic tool execution
+
+This setting is applied when the MCP tool is initialized and affects all subsequent tool calls in the session.
 
 ## Configuration
 
