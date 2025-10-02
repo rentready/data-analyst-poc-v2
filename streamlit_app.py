@@ -1,5 +1,6 @@
 """Ultra simple chat - refactored with event stream architecture."""
 
+from tracemalloc import stop
 import streamlit as st
 import logging
 from src.config import get_config, get_mcp_config, setup_environment_variables, get_auth_config
@@ -9,7 +10,7 @@ from src.auth import initialize_msal_auth
 from src.agent_manager import AgentManager
 from src.run_processor import RunProcessor
 from src.event_renderer import EventRenderer, render_error_buttons
-from src.run_events import RequiresApprovalEvent, MessageEvent, ErrorEvent
+from src.run_events import RequiresApprovalEvent, MessageEvent, ErrorEvent, ToolCallEvent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -211,9 +212,19 @@ def main():
                 
                 # Handle blocking event
                 if event.is_blocking:
-                    st.session_state.pending_approval = event
-                    st.rerun()
-                    return
+                    # Check if auto-approval is enabled
+                    if not agent_manager.require_approval:
+
+                        on_tool_approve(event, agent_manager)
+                        st.markdown(f"Executing tool **{event.tool_calls[0].name}**...")
+                        st.rerun()
+                        return
+
+                    else:
+                        # Show approval dialog
+                        st.session_state.pending_approval = event
+                        st.rerun()
+                        return
                 
                 # Render event - use typing effect for new messages only
                 if isinstance(event, MessageEvent):

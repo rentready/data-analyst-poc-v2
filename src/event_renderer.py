@@ -45,6 +45,9 @@ class EventRenderer:
         if isinstance(event, MessageEvent):
             EventRenderer.render_message(event)
         
+        elif isinstance(event, ToolCallEvent):
+            EventRenderer.render_tool_call(event)
+        
         elif isinstance(event, ToolCallsStepEvent):
             EventRenderer.render_tool_calls_step(event)
         
@@ -59,6 +62,14 @@ class EventRenderer:
         
         else:
             logger.warning(f"Unknown event type: {type(event)}")
+    
+    @staticmethod
+    def render_tool_call(event: ToolCallEvent):
+        """Render individual tool call execution."""
+        if event.status == "executing":
+            st.info(f"🔧 **Executing tool:** {event.tool_name}")
+        else:
+            st.info(f"🔧 **Tool:** {event.tool_name} ({event.status})")
     
     @staticmethod
     def render_message(event: MessageEvent):

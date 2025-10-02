@@ -27,7 +27,7 @@ class AgentManager:
         self.mcp_tool = self._setup_mcp_tool()
     
     def _setup_mcp_tool(self) -> McpTool:
-        """Setup MCP tool with authorization and approval mode."""
+        """Setup MCP tool with authorization."""
         server_label = self.mcp_config.get("mcp_server_label", "mcp_server")
         
         mcp_tool = McpTool(
@@ -38,13 +38,6 @@ class AgentManager:
         
         # Update headers with authorization token
         mcp_tool.update_headers("authorization", f"bearer {self.mcp_token}")
-        
-        # Set approval mode based on configuration
-        if not self.require_approval:
-            mcp_tool.set_approval_mode("never")
-            logger.info("🔓 MCP tool approval mode set to 'never' - no approval required")
-        else:
-            logger.info("🔒 MCP tool approval mode set to 'always' - approval required")
         
         return mcp_tool
     
