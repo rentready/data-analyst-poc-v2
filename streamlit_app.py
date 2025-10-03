@@ -34,10 +34,24 @@ def on_tool_deny(event: RequiresApprovalEvent, agent_manager: AgentManager):
         st.session_state.stage = 'user_input'
 
 
-def on_error_retry():
-    """Handle error retry."""
-    st.session_state.stage = 'processing'
-    st.session_state.error_event = None
+def on_error_retry(agent_manager: AgentManager):
+    """Handle error retry - create new run with retry instruction."""
+    # Create retry instruction message - don't repeat user's message
+    retry_message = "Please continue from where the previous attempt failed. Retry the last operation that encountered an error."
+    
+    # Add retry message to chat
+    st.session_state.messages.append({
+        "role": "user", 
+        "content": f"🔄 **Retrying previous request**"
+    })
+    
+    # Create new run with retry instruction
+    with st.spinner("Creating new run for retry...", show_time=True):
+        run_id = agent_manager.create_run(st.session_state.thread_id, retry_message)
+        st.session_state.run_id = run_id
+        st.session_state.processor = RunProcessor(agent_manager.agents_client)
+        st.session_state.stage = 'processing'
+        st.session_state.error_event = None
 
 
 def on_error_cancel():
@@ -162,7 +176,10 @@ def main():
         error_event = st.session_state.error_event
         with st.chat_message("assistant"):
             EventRenderer.render_error(error_event)
-            render_error_buttons(on_error_retry, on_error_cancel)
+            render_error_buttons(
+                lambda: on_error_retry(agent_manager), 
+                on_error_cancel
+            )
         return
     
     # Handle user input

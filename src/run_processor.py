@@ -88,10 +88,17 @@ class RunProcessor:
                             logger.info(f"✅ Run completed successfully")
                             yield event
                     elif run.status == "failed":
-                        error_msg = getattr(run, 'last_error', {}).get('message', 'Run failed')
-                        error_code = getattr(run, 'last_error', {}).get('code', None)
-                        logger.error(f"❌ Run failed: {error_msg}")
-                        yield ErrorEvent(error_message=error_msg, error_code=error_code)
+                        error_info = getattr(run, 'last_error', {})
+                        error_msg = error_info.get('message', 'Run failed')
+                        error_code = error_info.get('code', None)
+                        
+                        # Add more context to error message
+                        enhanced_msg = f"Run failed: {error_msg}"
+                        if error_code:
+                            enhanced_msg += f" (Code: {error_code})"
+                        
+                        logger.error(f"❌ Run failed: {enhanced_msg}")
+                        yield ErrorEvent(error_message=enhanced_msg, error_code=error_code)
                     
                     # Exit the polling loop
                     return
@@ -99,8 +106,9 @@ class RunProcessor:
                 time.sleep(poll_interval)
                 
             except Exception as e:
-                logger.error(f"Error polling run: {e}")
-                yield ErrorEvent(error_message=str(e))
+                error_msg = f"Error polling run: {str(e)}"
+                logger.error(error_msg)
+                yield ErrorEvent(error_message=error_msg)
                 return
     
     def _process_steps(self, thread_id: str, run_id: str) -> Generator[RunEvent, None, None]:

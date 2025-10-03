@@ -183,10 +183,29 @@ class EventRenderer:
     
     @staticmethod
     def render_error(event: ErrorEvent):
-        """Render error event."""
-        st.error(f"❌ Error: {event.error_message}")
+        """Render error event with helpful context."""
+        st.error(f"❌ **Error occurred:** {event.error_message}")
+        
         if event.error_code:
-            st.caption(f"Error code: {event.error_code}")
+            st.caption(f"Error code: `{event.error_code}`")
+        
+        # Add helpful suggestions based on error type
+        with st.expander("🔧 What can you do?", expanded=True):
+            st.markdown("""
+            **Options:**
+            - **🔄 Retry**: Continue from where it failed (recommended)
+            - **❌ Cancel**: Return to input mode to try a different approach
+            
+            **How retry works:**
+            - The agent will continue from the previous context
+            - No need to repeat your original request
+            - The agent knows the full conversation history
+            
+            **Tips:**
+            - If this is a temporary network issue, retry should work
+            - For authentication errors, check your sign-in status
+            - For tool errors, the issue might be with external services
+            """)
 
 
 def render_approval_buttons(event: RequiresApprovalEvent, 
