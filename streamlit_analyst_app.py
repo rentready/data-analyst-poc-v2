@@ -13,7 +13,7 @@ from src.run_processor import RunProcessor
 from src.event_renderer import EventRenderer, render_error_buttons
 from src.run_events import RequiresApprovalEvent, MessageEvent, ErrorEvent, ToolCallEvent
 from src.workflows.agent_executor import CustomAzureAgentExecutor
-from agent_framework import WorkflowBuilder, WorkflowOutputEvent
+from agent_framework import WorkflowBuilder, WorkflowOutputEvent, ExecutorCompletedEvent
 import asyncio
 
 logging.basicConfig(level=logging.INFO)
@@ -221,13 +221,19 @@ def main():
                             events_exhausted = True
                             continue;
 
-                        st.write(event)
-                        if isinstance(event, WorkflowOutputEvent):
-                            if isinstance(event.data, MessageEvent):
-                                EventRenderer.render_message_with_typing(event.data)
-
+                    st.write(event)
+                    if isinstance(event, WorkflowOutputEvent):
+                        if isinstance(event.data, MessageEvent):
+                            EventRenderer.render_message_with_typing(event.data)
+                            st.session_state.messages.append(event.data)
+    
             asyncio.run(run_workflow_stream(events))
 
+        # Run completed - reset state
+        logger.info("✅ Run completed, resetting state")
+        st.session_state.stage = 'user_input'
+        st.session_state.run_id = None
+        st.session_state.processor = None
 
 if __name__ == "__main__":
     main()
