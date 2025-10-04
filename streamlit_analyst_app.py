@@ -1,6 +1,7 @@
 """Ultra simple chat - refactored with event stream architecture."""
 
 from tracemalloc import stop
+from src.workflows import agent_executor
 import streamlit as st
 import logging
 from src.config import get_config, get_mcp_config, setup_environment_variables, get_auth_config
@@ -11,6 +12,9 @@ from src.agent_manager import AgentManager
 from src.run_processor import RunProcessor
 from src.event_renderer import EventRenderer, render_error_buttons
 from src.run_events import RequiresApprovalEvent, MessageEvent, ErrorEvent, ToolCallEvent
+from src.workflows.agent_executor import CustomAzureAgentExecutor
+from agent_framework import WorkflowBuilder, WorkflowOutputEvent
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -182,6 +186,8 @@ def main():
             )
         return
     
+    workflow = None
+    events = None
     # Handle user input
     if st.session_state.stage == 'user_input':
         if prompt := st.chat_input("Say something:"):
@@ -192,80 +198,35 @@ def main():
                 st.markdown(prompt)
             
             with st.spinner("Thinking...", show_time=True):
-                # Create run and new processor
-                run_id = agent_manager.create_run(st.session_state.thread_id, prompt)
-                st.session_state.run_id = run_id
-                st.session_state.processor = RunProcessor(agent_manager.agents_client)
                 st.session_state.stage = 'processing'
-    
+                logger.info(f"Processing prompt: {prompt}")
+                agent_executor = CustomAzureAgentExecutor(agent_manager, st.session_state.thread_id)
+                workflow = WorkflowBuilder().set_start_executor(agent_executor).build()
+                events = workflow.run_stream(prompt)
+                
+
     # Process run events
-    if st.session_state.stage == 'processing' and st.session_state.run_id:
-        processor = st.session_state.processor
-        
-        if not processor:
-            logger.error("No processor in session state!")
-            st.error("Error: No processor found")
-            st.session_state.stage = 'user_input'
-            return
+    if st.session_state.stage == 'processing':
         
         with st.chat_message("assistant"):
-            event_generator = processor.poll_run_events(
-                thread_id=st.session_state.thread_id,
-                run_id=st.session_state.run_id
-            )
-
-            events_exhausted = False
+            async def run_workflow_stream(events):
+                events_exhausted = False
             
-            while not events_exhausted:
-                event = None
-                with st.spinner("Processing...", show_time=True):
-                    try:
-                        event = next(event_generator)
-                    except StopIteration as e:
-                        events_exhausted = True
-                        continue;
-                
-                logger.info(f"📦 Received event: {event.event_type} (id: {event.event_id})")
-                
-                # Handle blocking event
-                if event.is_blocking:
-                    # Check if auto-approval is enabled
-                    if not agent_manager.require_approval:
+                while not events_exhausted:
+                    event = None
+                    with st.spinner("Processing...", show_time=True):
+                        try:
+                            event = await anext(events)
+                        except StopAsyncIteration as e:
+                            events_exhausted = True
+                            continue;
 
-                        on_tool_approve(event, agent_manager)
-                        st.markdown(f"Executing tool **{event.tool_calls[0].name}**...")
-                        st.rerun()
-                        return
+                        st.write(event)
+                        if isinstance(event, WorkflowOutputEvent):
+                            if isinstance(event.data, MessageEvent):
+                                EventRenderer.render_message_with_typing(event.data)
 
-                    else:
-                        # Show approval dialog
-                        st.session_state.pending_approval = event
-                        st.rerun()
-                        return
-                
-                # Render event - use typing effect for new messages only
-                if isinstance(event, MessageEvent):
-                    EventRenderer.render_message_with_typing(event)
-                else:
-                    EventRenderer.render(event)
-                
-                # Handle error events
-                if isinstance(event, ErrorEvent):
-                    st.session_state.error_event = event
-                    st.session_state.stage = 'error'
-                    st.rerun()
-                    return
-                
-                # Store event in history (skip completion/error events)
-                if event.event_type not in ['completed', 'error']:
-                    st.session_state.messages.append(event)
-        
-        # Run completed - reset state
-        logger.info("✅ Run completed, resetting state")
-        st.session_state.stage = 'user_input'
-        st.session_state.run_id = None
-        st.session_state.processor = None
-        st.rerun()
+            asyncio.run(run_workflow_stream(events))
 
 
 if __name__ == "__main__":
