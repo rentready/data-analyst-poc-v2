@@ -198,18 +198,20 @@ def main():
                 st.markdown(prompt)
             
             with st.spinner("Thinking...", show_time=True):
-                st.session_state.stage = 'processing'
-                logger.info(f"Processing prompt: {prompt}")
                 agent_executor = CustomAzureAgentExecutor(agent_manager, st.session_state.thread_id)
                 workflow = WorkflowBuilder().set_start_executor(agent_executor).build()
-                events = workflow.run_stream(prompt)
+                st.session_state.stage = 'processing'
+                st.session_state.workflow = workflow
                 
 
     # Process run events
-    if st.session_state.stage == 'processing':
+    if st.session_state.stage == 'processing' and st.session_state.workflow:
         
         with st.chat_message("assistant"):
             async def run_workflow_stream(events):
+                with st.spinner("Thinking...", show_time=True):
+                    events = workflow.run_stream(prompt)
+
                 events_exhausted = False
             
                 while not events_exhausted:
