@@ -232,6 +232,7 @@ def main():
                     .set_start_executor(agent_executor)
                     .add_edge(agent_executor, tool_approval_executor)
                     .add_edge(tool_approval_executor, agent_executor)
+                    .add_edge(agent_executor, agent_executor)
                     .build()
                 )
                 st.session_state.stage = 'processing'

@@ -8,7 +8,7 @@ from ..run_events import RequiresApprovalEvent
 
 from dataclasses import dataclass
 from agent_framework import (
-    Executor, ChatMessage, WorkflowContext, handler, RequestInfoEvent, RequestResponse, AgentExecutorRequest, AgentExecutorResponse,
+    Executor, ChatMessage, WorkflowContext, handler, executor, RequestInfoEvent, RequestResponse, AgentExecutorRequest, AgentExecutorResponse,
     RequestInfoMessage
 )
 
@@ -65,28 +65,6 @@ class CustomAzureAgentExecutor(Executor):
             logger.info(f"Yielded event: {event}")
 
         logger.info(f"Created run: {self.run_id}")
-
-    @handler
-    async def tool_response_run(self, response: ToolApprovalResponse, ctx: WorkflowContext[ToolApprovalRequest]) -> None:
-        """
-        Execute agent with given context.
-        
-        This wraps the Azure AI Agent run creation and execution.
-        Returns the result in a format compatible with workflow framework.
-        """
-
-
-        for event in self.processor.poll_run_events(self.thread_id, self.run_id):
-            if event.is_blocking and isinstance(event, RequiresApprovalEvent):
-                logger.info(f"Blocking event: {event}")
-                await ctx.send_message(ToolApprovalRequest(event=event))
-                logger.info(f"Added event: {event}")
-                return
-            else:
-                await ctx.yield_output(event)
-            logger.info(f"Yielded event: {event}")
-
-        logger.info(f"Created run: {self.run_id}")
         
     @handler
     async def on_human_feedback(
@@ -104,4 +82,4 @@ class CustomAzureAgentExecutor(Executor):
         logger.info(f"Context: {ctx}")
         # Prefer the correlated request's guess to avoid extra shared state reads.
         #await ctx.send_message(AgentExecutorRequest(messages=[ChatMessage(role="user", text="test")]))
-        await ctx.send_message(ToolApprovalResponse(response=feedback.data))
+        await ctx.send_message("test")
