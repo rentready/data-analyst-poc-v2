@@ -18,7 +18,7 @@ import asyncio
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
 
-def on_tool_approve(event: RequiresApprovalEvent, agent_manager: AgentManager):
+def on_tool_approve():
     """Handle tool approval."""
     # Send approval response to workflow
     st.session_state.approval_response = "approved"
@@ -27,7 +27,7 @@ def on_tool_approve(event: RequiresApprovalEvent, agent_manager: AgentManager):
     st.session_state.skip_run_stream = True
 
 
-def on_tool_deny(event: RequiresApprovalEvent, agent_manager: AgentManager):
+def on_tool_deny():
     """Handle tool denial."""
     # Send denial response to workflow
     st.session_state.approval_response = "denied"
@@ -110,14 +110,14 @@ def initialize_app() -> AgentManager:
     
     # Display MCP status in sidebar
     # Get approval setting (default to True)
-    require_approval = True
+    st.session_state.require_approval = True
     
     if mcp_config:
         with st.sidebar:
             display_mcp_status(mcp_config, mcp_token)
             # Add approval setting inside MCP section
             st.divider()
-            require_approval = st.checkbox(
+            st.session_state.require_approval = st.checkbox(
                 "Require tool approval", 
                 value=True,
                 help="When enabled, you'll need to approve each tool call before execution"
@@ -129,7 +129,7 @@ def initialize_app() -> AgentManager:
         agent_id=config[AGENT_ID_KEY],
         mcp_config=mcp_config,
         mcp_token=mcp_token,
-        require_approval=require_approval
+        require_approval=st.session_state.require_approval
     )
     
     # Initialize session state
@@ -197,8 +197,8 @@ def main():
         event = st.session_state.pending_approval.data.event
         with st.chat_message("assistant"):
             EventRenderer.render_approval_request(event,
-                                                lambda e: on_tool_approve(e, agent_manager),
-                                                lambda e: on_tool_deny(e, agent_manager))
+                                                lambda e: on_tool_approve(),
+                                                lambda e: on_tool_deny())
         return
     
     # Handle error state
@@ -222,14 +222,14 @@ def main():
                 st.markdown(prompt)
             
             with st.spinner("Thinking...", show_time=True):
-                agent_executor = CustomAzureAgentExecutor(agent_manager, st.session_state.thread_id)
+                agent_executor = CustomAzureAgentExecutor(agent_manager, st.session_state.thread_id, require_approval=st.session_state.require_approval)
                 tool_approval_executor = RequestInfoExecutor(id="request_tool_approval")
                 workflow = (
                     WorkflowBuilder()
                     .set_start_executor(agent_executor)
-                    .add_edge(agent_executor, tool_approval_executor)
-                    .add_edge(tool_approval_executor, agent_executor)
-                    .add_edge(agent_executor, agent_executor)
+                        .add_edge(agent_executor, tool_approval_executor)
+                        .add_edge(tool_approval_executor, agent_executor)
+                        .add_edge(agent_executor, agent_executor)
                     .build()
                 )
                 st.session_state.stage = 'processing'
