@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class AgentManager:
     """Manages Azure AI Agent operations including MCP setup and approvals."""
     
-    def __init__(self, project_endpoint: str, agent_id: str, mcp_config: dict, mcp_token: str):
+    def __init__(self, project_endpoint: str, agent_id: str, mcp_config: dict, mcp_token: str, thread_id: str = None):
         self.project_endpoint = project_endpoint
         self.agent_id = agent_id
         self.mcp_config = mcp_config
@@ -24,6 +24,7 @@ class AgentManager:
         
         # Setup MCP tool
         self.mcp_tool = self._setup_mcp_tool()
+        self.thread_id = self.create_thread() if thread_id is None else thread_id
     
     def _setup_mcp_tool(self) -> McpTool:
         """Setup MCP tool with authorization."""

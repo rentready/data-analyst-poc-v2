@@ -23,11 +23,10 @@ class ToolApprovalRequest(RequestInfoMessage):
 class CustomAzureAgentExecutor(Executor):
     """Custom executor that wraps Azure AI Agent for workflow integration."""
     
-    def __init__(self, agent_manager: 'AgentManager', thread_id: str, executor_id: str = "azure_agent_executor", require_approval: bool = True):
+    def __init__(self, agent_manager: 'AgentManager', executor_id: str = "azure_agent_executor", require_approval: bool = True):
         """Initialize with AgentManager instance."""
         super().__init__(executor_id)
         self.agent_manager = agent_manager
-        self.thread_id = thread_id
         self.processor = None
         self.run_id = None
         self.require_approval = require_approval
@@ -46,11 +45,11 @@ class CustomAzureAgentExecutor(Executor):
 
         # Create and execute run
         if not self.run_id:
-            self.run_id = self.agent_manager.create_run(self.thread_id, user_message)
+            self.run_id = self.agent_manager.create_run(self.agent_manager.thread_id, user_message)
             self.processor = RunProcessor(self.agent_manager.agents_client)
 
 
-        for event in self.processor.poll_run_events(self.thread_id, self.run_id):
+        for event in self.processor.poll_run_events(self.agent_manager.thread_id, self.run_id):
             if event.is_blocking and isinstance(event, RequiresApprovalEvent):
                 logger.info(f"Blocking event: {event}")
                 if self.require_approval:
