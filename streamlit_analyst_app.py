@@ -156,11 +156,7 @@ def run_async_task(async_func, *args):
         if loop is not None:
             loop.close()
 
-def main():
-    st.title("🤖 Ultra Simple Chat")
-    
-    # Initialize app (config, auth, MCP, agent manager, session state, thread)
-    initialize_app()
+def create_workflow():
     # Get MCP configuration and token
     config = get_config()
     mcp_config = get_mcp_config()
@@ -172,6 +168,24 @@ def main():
         mcp_config=mcp_config,
         mcp_token=mcp_token
     )
+
+    agent_executor = CustomAzureAgentExecutor(agent_manager, require_approval=st.session_state.require_approval)
+    tool_approval_executor = RequestInfoExecutor(id="request_tool_approval")
+    return (
+        WorkflowBuilder()
+        .set_start_executor(agent_executor)
+            .add_edge(agent_executor, tool_approval_executor)
+            .add_edge(tool_approval_executor, agent_executor)
+            .add_edge(agent_executor, agent_executor)
+        .build()
+    )
+
+def main():
+    st.title("🤖 Ultra Simple Chat")
+    
+    # Initialize app (config, auth, MCP, agent manager, session state, thread)
+    initialize_app()
+
     
     # Display message history
     render_message_history()
@@ -185,17 +199,6 @@ def main():
                                                 lambda e: on_tool_deny())
         return
     
-    # Handle error state
-    if st.session_state.stage == 'error' and 'error_event' in st.session_state:
-        error_event = st.session_state.error_event
-        with st.chat_message("assistant"):
-            EventRenderer.render_error(error_event)
-            render_error_buttons(
-                lambda: on_error_retry(agent_manager), 
-                on_error_cancel
-            )
-        return
-    
     # Handle user input
     if st.session_state.stage == 'user_input':
         if prompt := st.chat_input("Say something:"):
@@ -206,16 +209,7 @@ def main():
                 st.markdown(prompt)
             
             with st.spinner("Thinking...", show_time=True):
-                agent_executor = CustomAzureAgentExecutor(agent_manager, require_approval=st.session_state.require_approval)
-                tool_approval_executor = RequestInfoExecutor(id="request_tool_approval")
-                workflow = (
-                    WorkflowBuilder()
-                    .set_start_executor(agent_executor)
-                        .add_edge(agent_executor, tool_approval_executor)
-                        .add_edge(tool_approval_executor, agent_executor)
-                        .add_edge(agent_executor, agent_executor)
-                    .build()
-                )
+                workflow = create_workflow()
                 st.session_state.stage = 'processing'
                 st.session_state.workflow = workflow
                 st.session_state.current_prompt = prompt
