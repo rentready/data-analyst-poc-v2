@@ -20,11 +20,6 @@ class ToolApprovalRequest(RequestInfoMessage):
     """Request for tool approval."""
     event: RequiresApprovalEvent = None
 
-@dataclass
-class ToolApprovalResponse():
-    """Request for tool approval."""
-    response: str = None
-
 class CustomAzureAgentExecutor(Executor):
     """Custom executor that wraps Azure AI Agent for workflow integration."""
     
@@ -72,14 +67,24 @@ class CustomAzureAgentExecutor(Executor):
         feedback: RequestResponse[ToolApprovalRequest, str],
         ctx: WorkflowContext[str],
     ) -> None:
-        """Continue the game or finish based on human feedback.
+        """Handle human feedback for tool approval.
 
-        The RequestResponse contains both the human's string reply and the correlated ToolApprovalRequest,
-        which carries the prior guess for convenience.
+        The RequestResponse contains both the human's string reply ("approved"/"denied") 
+        and the correlated ToolApprovalRequest with the approval event.
         """
 
         logger.info(f"On human feedback: {feedback}")
         logger.info(f"Context: {ctx}")
-        # Prefer the correlated request's guess to avoid extra shared state reads.
-        #await ctx.send_message(AgentExecutorRequest(messages=[ChatMessage(role="user", text="test")]))
-        await ctx.send_message("test")
+        
+        # Extract approval decision from feedback response
+        approved = feedback.data == "approved"
+        event = feedback.original_request.event
+        
+        # Submit approvals to Azure AI
+        if self.agent_manager.submit_approvals(event, approved=approved):
+            if approved:
+                await ctx.yield_output(event)
+            else:
+                await ctx.yield_output(event)
+
+        await ctx.send_message(feedback.data)

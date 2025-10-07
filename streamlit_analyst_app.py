@@ -20,25 +20,20 @@ logger = logging.getLogger(__name__)
 
 def on_tool_approve(event: RequiresApprovalEvent, agent_manager: AgentManager):
     """Handle tool approval."""
-    if agent_manager.submit_approvals(event, approved=True):
-        # Unblock processor and continue
-        if 'processor' in st.session_state and st.session_state.processor:
-            st.session_state.processor.unblock()
-        st.session_state.pending_approval = None
-        st.session_state.stage = 'processing'
-        # Mark that we should skip the initial stream setup
-        st.session_state.skip_run_stream = True
+    # Send approval response to workflow
+    st.session_state.approval_response = "approved"
+    st.session_state.pending_approval = None
+    st.session_state.stage = 'processing'
+    st.session_state.skip_run_stream = True
 
 
 def on_tool_deny(event: RequiresApprovalEvent, agent_manager: AgentManager):
     """Handle tool denial."""
-    if agent_manager.submit_approvals(event, approved=False):
-        # Denied - stop processing
-        st.session_state.pending_approval = None
-        st.session_state.processor = None
-        st.session_state.stage = 'user_input'
-        # Mark that we should skip the initial stream setup
-        st.session_state.skip_run_stream = True
+    # Send denial response to workflow
+    st.session_state.approval_response = "denied"
+    st.session_state.pending_approval = None
+    st.session_state.stage = 'user_input'
+    st.session_state.skip_run_stream = True
 
 
 def on_error_retry(agent_manager: AgentManager):
@@ -156,6 +151,8 @@ def initialize_app() -> AgentManager:
         st.session_state.skip_run_stream = False
     if 'current_prompt' not in st.session_state:
         st.session_state.current_prompt = None
+    if 'approval_response' not in st.session_state:
+        st.session_state.approval_response = None
     
     # Create thread if needed
     if not st.session_state.thread_id:
@@ -250,7 +247,7 @@ def main():
                         events = st.session_state.workflow.run_stream(st.session_state.current_prompt)
                 else:
                     responses: dict[str, str] = {}
-                    responses[st.session_state.pending_approval_id] = "result"
+                    responses[st.session_state.pending_approval_id] = st.session_state.approval_response
                     events =st.session_state.workflow.send_responses_streaming(responses)
                 
                 # Reset the skip flag
