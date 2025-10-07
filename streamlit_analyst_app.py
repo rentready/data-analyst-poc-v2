@@ -10,7 +10,7 @@ from src.auth import initialize_msal_auth
 from src.agent_manager import AgentManager
 from src.run_processor import RunProcessor
 from src.event_renderer import EventRenderer, render_error_buttons
-from src.run_events import RequiresApprovalEvent, MessageEvent, ErrorEvent, ToolCallEvent
+from src.run_events import RequiresApprovalEvent, MessageEvent, ErrorEvent, ToolCallEvent, ToolCallsStepEvent
 from src.workflows.agent_executor import CustomAzureAgentExecutor
 from agent_framework import WorkflowBuilder, WorkflowOutputEvent, RequestInfoEvent, WorkflowFailedEvent, RequestInfoExecutor, WorkflowStatusEvent, WorkflowRunState
 import asyncio
@@ -275,6 +275,10 @@ def main():
                         if isinstance(event.data, MessageEvent):
                             EventRenderer.render_message_with_typing(event.data)
                             st.session_state.messages.append(event.data)
+                        elif isinstance(event.data, ToolCallsStepEvent):
+                            EventRenderer.render(event.data)
+                            st.session_state.messages.append(event.data)
+                        
                     if (isinstance(event, RequestInfoEvent)):
                         st.session_state.pending_approval = event
                         st.session_state.pending_approval_id = event.request_id
