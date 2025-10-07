@@ -41,10 +41,10 @@ class AgentManager:
         
         return mcp_tool
     
-    def create_run(self, thread_id: str, message: str) -> str:
+    def create_run(self, message: str) -> str:
         """Create a run and return run_id."""
         # Create user message
-        self.agents_client.messages.create(thread_id=thread_id, role="user", content=message)
+        self.agents_client.messages.create(thread_id=self.thread_id, role="user", content=message)
         
         # Get tool resources if MCP is available
         tool_resources = []
@@ -61,7 +61,7 @@ class AgentManager:
             headers["Authorization"] = f"Bearer {self.mcp_token}"
         
         run = self.agents_client.runs.create(
-            thread_id=thread_id,
+            thread_id=self.thread_id,
             agent_id=self.agent_id,
             instructions="You are a helpful assistant, you will respond to the user's message and you will use the tools provided to you to help the user. You will justify what tools you are going to use before requesting them.",
             headers=headers,

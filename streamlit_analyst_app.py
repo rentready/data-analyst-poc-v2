@@ -76,10 +76,9 @@ def render_message_history():
                 EventRenderer.render(item)
 
 
-def initialize_app() -> AgentManager:
+def initialize_app() -> None:
     """
-    Initialize application: config, auth, MCP, agent manager, session state.
-    Returns AgentManager instance.
+    Initialize application: config, auth, MCP manager, session state.
     """
     # Get configuration
     config = get_config()
@@ -104,32 +103,13 @@ def initialize_app() -> AgentManager:
         st.error("❌ Please sign in to use the chatbot.")
         st.stop()
     
-    # Get MCP configuration and token
-    mcp_config = get_mcp_config()
-    mcp_token = get_mcp_token_sync(mcp_config)
-    
-    # Display MCP status in sidebar
-    # Get approval setting (default to True)
-    st.session_state.require_approval = True
-    
-    if mcp_config:
-        with st.sidebar:
-            display_mcp_status(mcp_config, mcp_token)
-            # Add approval setting inside MCP section
-            st.divider()
-            st.session_state.require_approval = st.checkbox(
-                "Require tool approval", 
-                value=True,
-                help="When enabled, you'll need to approve each tool call before execution"
-            )
-    
-    # Initialize agent manager
-    agent_manager = AgentManager(
-        project_endpoint=config[PROJ_ENDPOINT_KEY],
-        agent_id=config[AGENT_ID_KEY],
-        mcp_config=mcp_config,
-        mcp_token=mcp_token
-    )
+    with st.sidebar:
+        # Add approval setting inside MCP section
+        st.session_state.require_approval = st.checkbox(
+            "Require tool approval", 
+            value=False,
+            help="When enabled, you'll need to approve each tool call before execution"
+        )
     
     # Initialize session state
     if "messages" not in st.session_state:
@@ -152,12 +132,6 @@ def initialize_app() -> AgentManager:
         st.session_state.current_prompt = None
     if 'approval_response' not in st.session_state:
         st.session_state.approval_response = None
-    
-    # Create thread if needed
-    if not st.session_state.thread_id:
-        st.session_state.thread_id = agent_manager.create_thread()
-    
-    return agent_manager
 
 
 def run_async_task(async_func, *args):
@@ -186,7 +160,18 @@ def main():
     st.title("🤖 Ultra Simple Chat")
     
     # Initialize app (config, auth, MCP, agent manager, session state, thread)
-    agent_manager = initialize_app()
+    initialize_app()
+    # Get MCP configuration and token
+    config = get_config()
+    mcp_config = get_mcp_config()
+    mcp_token = get_mcp_token_sync(mcp_config)
+
+    agent_manager = AgentManager(
+        project_endpoint=config[PROJ_ENDPOINT_KEY],
+        agent_id=config[AGENT_ID_KEY],
+        mcp_config=mcp_config,
+        mcp_token=mcp_token
+    )
     
     # Display message history
     render_message_history()
@@ -221,7 +206,7 @@ def main():
                 st.markdown(prompt)
             
             with st.spinner("Thinking...", show_time=True):
-                agent_executor = CustomAzureAgentExecutor(agent_manager, st.session_state.thread_id, require_approval=st.session_state.require_approval)
+                agent_executor = CustomAzureAgentExecutor(agent_manager, require_approval=st.session_state.require_approval)
                 tool_approval_executor = RequestInfoExecutor(id="request_tool_approval")
                 workflow = (
                     WorkflowBuilder()

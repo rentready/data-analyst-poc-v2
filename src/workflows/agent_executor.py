@@ -45,7 +45,7 @@ class CustomAzureAgentExecutor(Executor):
 
         # Create and execute run
         if not self.run_id:
-            self.run_id = self.agent_manager.create_run(self.agent_manager.thread_id, user_message)
+            self.run_id = self.agent_manager.create_run(user_message)
             self.processor = RunProcessor(self.agent_manager.agents_client)
 
 
