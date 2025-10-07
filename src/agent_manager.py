@@ -12,12 +12,11 @@ logger = logging.getLogger(__name__)
 class AgentManager:
     """Manages Azure AI Agent operations including MCP setup and approvals."""
     
-    def __init__(self, project_endpoint: str, agent_id: str, mcp_config: dict, mcp_token: str, require_approval: bool = True):
+    def __init__(self, project_endpoint: str, agent_id: str, mcp_config: dict, mcp_token: str):
         self.project_endpoint = project_endpoint
         self.agent_id = agent_id
         self.mcp_config = mcp_config
         self.mcp_token = mcp_token
-        self.require_approval = require_approval
         
         # Initialize clients
         self.client = AIProjectClient(project_endpoint, DefaultAzureCredential())

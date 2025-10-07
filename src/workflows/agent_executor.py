@@ -58,6 +58,8 @@ class CustomAzureAgentExecutor(Executor):
                 else:
                     await ctx.yield_output(event)
                     self.agent_manager.submit_approvals(event, approved=True)
+                    await ctx.send_message("Tool approved")
+                    return
                 logger.info(f"Added event: {event}")
                 return
             else:
